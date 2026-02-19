@@ -1,0 +1,46 @@
+<header class="app-toolbar">
+  <div class="brand">
+    <div class="dot"></div>
+    <div>
+      <div class="title">FlowDesks</div>
+      <div class="subtitle">{{ 'app.subtitle' | t }}</div>
+    </div>
+  </div>
+
+  @if (sessionStore.profile(); as profile) {
+    <div class="profile-actions">
+      <span class="user">{{ profile.full_name || profile.role }}</span>
+      @if (profile.role === 'COLLABORATOR') {
+        <button mat-stroked-button routerLink="/me/ponto">{{ 'app.punch' | t }}</button>
+        <button mat-stroked-button routerLink="/me/perfil">{{ 'app.profile' | t }}</button>
+      }
+      <button mat-stroked-button [matMenuTriggerFor]="langMenu">{{ 'lang.label' | t }}</button>
+      <mat-menu #langMenu="matMenu">
+        @for (lang of languages; track lang) {
+          <button mat-menu-item [disabled]="currentLanguage() === lang" (click)="setLanguage(lang)">
+            {{ languageLabel(lang) }}
+          </button>
+        }
+      </mat-menu>
+      <button mat-stroked-button [matMenuTriggerFor]="accountMenu">{{ 'app.account' | t }}</button>
+      <mat-menu #accountMenu="matMenu">
+        @if (profile.role === 'COLLABORATOR') {
+          <button mat-menu-item routerLink="/me/perfil">{{ 'app.profile' | t }}</button>
+        }
+        <button mat-menu-item (click)="logout()">{{ 'app.logout' | t }}</button>
+      </mat-menu>
+    </div>
+  }
+</header>
+
+@if (sessionStore.loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (isOffline()) {
+  <div class="offline-banner">{{ 'app.offline' | t }}</div>
+}
+
+<main class="app-main">
+  <router-outlet />
+</main>

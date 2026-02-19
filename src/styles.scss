@@ -1,0 +1,255 @@
+@use '@angular/material' as mat;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@include mat.core();
+
+$primary-palette: mat.define-palette(mat.$cyan-palette, 700, 300, 900);
+$accent-palette: mat.define-palette(mat.$teal-palette, 400, 200, 700);
+$warn-palette: mat.define-palette(mat.$red-palette);
+
+$theme: mat.define-light-theme(
+  (
+    color: (
+      primary: $primary-palette,
+      accent: $accent-palette,
+      warn: $warn-palette
+    ),
+    typography: mat.define-typography-config(
+      $font-family: 'Segoe UI, Helvetica Neue, Arial, sans-serif'
+    )
+  )
+);
+
+@include mat.all-component-themes($theme);
+
+:root {
+  --bg-a: #f6fbff;
+  --bg-b: #edf8ff;
+  --card: #ffffff;
+  --stroke: #dbe7f0;
+  --text: #1f2937;
+  --muted: #6b7280;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 0% 0%, #d9f6ff 0%, transparent 42%),
+    radial-gradient(circle at 100% 0%, #d7fff4 0%, transparent 40%),
+    linear-gradient(140deg, var(--bg-a), var(--bg-b));
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+mat-card,
+.surface-card {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  box-shadow: 0 12px 30px -16px rgba(15, 23, 42, 0.35);
+}
+
+.mat-mdc-form-field {
+  width: 100%;
+}
+
+.mdc-text-field--outlined {
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 12px;
+}
+
+.mat-mdc-table {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.mat-mdc-header-row {
+  background: linear-gradient(180deg, #f7fbff, #f2f8ff);
+}
+
+.mat-mdc-row:hover {
+  background: #f8fcff;
+}
+
+.toast-success {
+  --mdc-snackbar-container-color: #0f766e;
+  --mdc-snackbar-supporting-text-color: #fff;
+}
+
+.toast-error {
+  --mdc-snackbar-container-color: #b91c1c;
+  --mdc-snackbar-supporting-text-color: #fff;
+}
+
+.toast-info {
+  --mdc-snackbar-container-color: #1d4ed8;
+  --mdc-snackbar-supporting-text-color: #fff;
+}
+
+.fc {
+  --fc-border-color: #e2e8f0;
+  --fc-page-bg-color: transparent;
+  --fc-today-bg-color: rgba(14, 165, 233, 0.1);
+  --fc-neutral-bg-color: #f8fbff;
+  --fc-neutral-text-color: #0f172a;
+  --fc-button-bg-color: #0f766e;
+  --fc-button-border-color: #0f766e;
+  --fc-button-hover-bg-color: #115e59;
+  --fc-button-hover-border-color: #115e59;
+  --fc-button-active-bg-color: #0f172a;
+  --fc-button-active-border-color: #0f172a;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.fc .fc-button {
+  border-radius: 10px !important;
+  padding: 0.35rem 0.65rem !important;
+  font-weight: 600;
+}
+
+.fc .fc-toolbar {
+  row-gap: 10px;
+}
+
+.fc .fc-toolbar-chunk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fc .fc-button-group {
+  display: inline-flex;
+  gap: 6px;
+}
+
+@media (max-width: 900px) {
+  .fc .fc-toolbar-chunk {
+    gap: 6px;
+  }
+
+  .fc .fc-button-group {
+    gap: 4px;
+  }
+}
+
+@media (max-width: 760px) {
+  .fc .fc-toolbar {
+    align-items: stretch;
+  }
+
+  .fc .fc-toolbar-chunk {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 0.95rem;
+  }
+
+  .mat-mdc-dialog-container .mdc-dialog__surface {
+    width: min(96vw, 720px) !important;
+    max-width: 96vw !important;
+  }
+}
+
+.fc .fc-col-header-cell-cushion {
+  color: #334155;
+  font-weight: 700;
+  padding: 8px 0;
+}
+
+.fc .fc-timegrid-slot-label-cushion,
+.fc .fc-timegrid-axis-cushion {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.fc .fc-timegrid-event-harness {
+  margin-inline: 3px;
+}
+
+.fc .fc-event {
+  border-radius: 10px;
+  border-width: 0;
+  padding: 2px;
+}
+
+.fc-modern-event {
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+  width: 100%;
+  min-width: 0;
+}
+
+.fc-modern-event b {
+  font-size: 10px;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-modern-event span {
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.fc .fc-timegrid-event .fc-event-main {
+  padding: 2px 4px;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .fc-modern-event b {
+    display: none;
+  }
+
+  .fc-modern-event span {
+    font-size: 10px;
+    -webkit-line-clamp: 1;
+  }
+}
