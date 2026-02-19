@@ -410,6 +410,16 @@ mat-card,
   justify-content: center;
 }
 
+.fc .fc-daygrid-day.fc-mobile-selected-day {
+  background: #dff7f3 !important;
+  box-shadow: inset 0 0 0 2px #0f766e;
+}
+
+.fc .fc-daygrid-day.fc-mobile-selected-day .fc-daygrid-day-number {
+  color: #0f766e;
+  font-weight: 800;
+}
+
 app-admin-calendar-page .list-tabs {
   display: flex;
   gap: 8px;

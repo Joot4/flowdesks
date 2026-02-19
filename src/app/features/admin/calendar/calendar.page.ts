@@ -10,7 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import { FullCalendarComponent, FullCalendarModule } from '@fullcalendar/angular';
-import { CalendarOptions, DateSelectArg, DatesSetArg, EventClickArg, EventDropArg, EventInput, EventContentArg } from '@fullcalendar/core';
+import { CalendarOptions, DateSelectArg, DatesSetArg, EventClickArg, EventDropArg, EventInput, EventContentArg, DayCellContentArg } from '@fullcalendar/core';
 import { DateClickArg } from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 import enGbLocale from '@fullcalendar/core/locales/en-gb';
@@ -788,6 +788,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
     selectMinDistance: 0,
     editable: true,
     events: [],
+    dayCellClassNames: (arg: DayCellContentArg) => this.dayCellClassNames(arg),
     eventContent: (arg: EventContentArg) => ({
       html: `<div class="fc-modern-event"><b>${arg.timeText}</b><span>${arg.event.title}</span></div>`
     }),
@@ -854,14 +855,14 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
   goToday(): void {
     this.adminCalendar?.getApi().today();
-    this.mobileFocusDate.set(this.dateKeyFortaleza(new Date()));
+    this.setMobileFocusDate(new Date());
   }
 
   shiftMobileFocus(days: number): void {
     const [year, month, day] = this.mobileFocusDate().split('-').map((part) => Number.parseInt(part, 10));
     const base = new Date(Date.UTC(year, month - 1, day, 3, 0, 0, 0));
     base.setUTCDate(base.getUTCDate() + days);
-    this.mobileFocusDate.set(this.dateKeyFortaleza(base));
+    this.setMobileFocusDate(base);
     this.adminCalendar?.getApi().gotoDate(base);
   }
 
@@ -1104,7 +1105,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
   private openCreateDialog(selection: DateSelectArg): void {
     if (this.isMobile()) {
-      this.mobileFocusDate.set(this.dateKeyFortaleza(selection.start));
+      this.setMobileFocusDate(selection.start);
       return;
     }
     this.openCreateDialogFromDates(selection.start, selection.end);
@@ -1172,7 +1173,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
     };
 
     if (this.isMobile()) {
-      this.mobileFocusDate.set(this.dateKeyFortaleza(start));
+      this.setMobileFocusDate(start);
       return;
     }
 
@@ -1185,7 +1186,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
       return;
     }
 
-    this.mobileFocusDate.set(this.dateKeyFortaleza(assignment.start_at));
+    this.setMobileFocusDate(assignment.start_at);
     this.openEditDialogForAssignment(assignment);
     click.jsEvent.preventDefault();
   }
@@ -1589,7 +1590,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
       const current = this.mobileFocusDate();
       const currentDate = new Date(`${current}T03:00:00.000Z`);
       if (currentDate < arg.start || currentDate > arg.end) {
-        this.mobileFocusDate.set(this.dateKeyFortaleza(arg.start));
+        this.setMobileFocusDate(arg.start);
       }
     }
   }
@@ -1644,6 +1645,19 @@ export class AdminCalendarPageComponent implements OnDestroy {
       month: '2-digit',
       day: '2-digit'
     }).format(typeof value === 'string' ? new Date(value) : value);
+  }
+
+  private dayCellClassNames(arg: DayCellContentArg): string[] {
+    if (!this.isMobile()) {
+      return [];
+    }
+
+    return this.dateKeyFortaleza(arg.date) === this.mobileFocusDate() ? ['fc-mobile-selected-day'] : [];
+  }
+
+  private setMobileFocusDate(value: Date | string): void {
+    this.mobileFocusDate.set(this.dateKeyFortaleza(value));
+    this.adminCalendar?.getApi().render();
   }
 
   private assignmentDayBucket(assignment: Assignment): 'past' | 'today' | 'future' {
