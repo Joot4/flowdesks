@@ -21,7 +21,8 @@ export interface AssignmentDialogData {
   selectedEnd?: Date;
 }
 
-export interface AssignmentDialogResult {
+export interface AssignmentDialogSaveResult {
+  action?: 'save';
   id?: string;
   recurrence_group_id?: string | null;
   employee_profile_id: string;
@@ -46,6 +47,14 @@ export interface AssignmentDialogResult {
   repeat_interval_days: number;
   status: AssignmentStatus;
 }
+
+export interface AssignmentDialogDeleteResult {
+  action: 'delete';
+  id: string;
+  recurrence_group_id?: string | null;
+}
+
+export type AssignmentDialogResult = AssignmentDialogSaveResult | AssignmentDialogDeleteResult;
 
 @Component({
   selector: 'app-assignment-dialog',
@@ -211,6 +220,9 @@ export interface AssignmentDialogResult {
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
+      @if (data.assignment) {
+        <button mat-stroked-button color="warn" type="button" (click)="remove()">Excluir</button>
+      }
       <button mat-button mat-dialog-close>Cancelar</button>
       <button mat-flat-button color="primary" [disabled]="form.invalid" (click)="save()">Salvar</button>
     </mat-dialog-actions>
@@ -373,6 +385,7 @@ export class AssignmentDialogComponent {
     const endAtIso = this.combineDateAndTime(raw.end_date, raw.end_time);
 
     this.dialogRef.close({
+      action: 'save',
       id: raw.id || undefined,
       recurrence_group_id: raw.recurrence_group_id,
       employee_profile_id: raw.employee_profile_id,
@@ -396,6 +409,18 @@ export class AssignmentDialogComponent {
       repeat_count: raw.repeat_count,
       repeat_interval_days: raw.repeat_interval_days,
       status: raw.status
+    });
+  }
+
+  remove(): void {
+    const id = this.data.assignment?.id;
+    if (!id) {
+      return;
+    }
+    this.dialogRef.close({
+      action: 'delete',
+      id,
+      recurrence_group_id: this.data.assignment?.recurrence_group_id ?? null
     });
   }
 

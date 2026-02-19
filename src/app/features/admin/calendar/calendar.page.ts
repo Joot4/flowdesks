@@ -1,16 +1,15 @@
-import { ChangeDetectionStrategy, Component, effect, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, ViewChild, effect, signal } from '@angular/core';
 import { CommonModule, formatDate } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { DateAdapter, MAT_DATE_FORMATS, MatDateFormats, MatNativeDateModule, NativeDateAdapter } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
 import { Overlay } from '@angular/cdk/overlay';
-import { FullCalendarModule } from '@fullcalendar/angular';
+import { FullCalendarComponent, FullCalendarModule } from '@fullcalendar/angular';
 import { CalendarOptions, DateSelectArg, DatesSetArg, EventClickArg, EventDropArg, EventInput, EventContentArg } from '@fullcalendar/core';
 import { DateClickArg } from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
@@ -24,7 +23,7 @@ import { CatalogsService } from '../../../core/supabase/catalogs.service';
 import { CollaboratorView, EmployeesService } from '../../../core/supabase/employees.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { Assignment, ActivityType, Location } from '../../../shared/models/assignment.model';
-import { AssignmentDialogComponent, AssignmentDialogResult } from './assignment.dialog';
+import { AssignmentDialogComponent, AssignmentDialogResult, AssignmentDialogSaveResult } from './assignment.dialog';
 import { ReassignDialogComponent, ReassignDialogResult } from './reassign.dialog';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 import { TzDatePipe } from '../../../shared/pipes/tz-date.pipe';
@@ -50,6 +49,22 @@ interface PaylistRow {
   extras: string;
   deductions: string;
   totalAmount: string;
+}
+
+interface AttendanceHistoryRow {
+  assignmentId: string;
+  employeeName: string;
+  startAt: string;
+  endAt: string;
+  attendanceLabel: string;
+  checkInLabel: string;
+  checkOutLabel: string;
+  sortAt: number;
+}
+
+interface AttendanceHistoryGroup {
+  employeeName: string;
+  rows: AttendanceHistoryRow[];
 }
 
 const SHORT_PT_BR_DATE_FORMATS: MatDateFormats = {
@@ -79,7 +94,6 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
     MatButtonModule,
     MatDatepickerModule,
     MatFormFieldModule,
-    MatIconModule,
     MatInputModule,
     MatNativeDateModule,
     MatSelectModule,
@@ -119,6 +133,16 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
         </div>
       </div>
 
+      @if (isMobile()) {
+        <div class="mobile-topbar surface-card">
+          <button mat-stroked-button type="button" (click)="toggleMobileFilters()">
+            {{ showMobileFilters() ? 'Ocultar filtros' : 'Mostrar filtros' }}
+          </button>
+          <button mat-stroked-button type="button" (click)="goToday()">Hoje</button>
+        </div>
+      }
+
+      @if (!isMobile() || showMobileFilters()) {
       <form [formGroup]="filters" class="filters surface-card" (ngSubmit)="refresh()">
         <div class="filters-row">
           <mat-form-field appearance="fill">
@@ -184,6 +208,7 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
           <button mat-stroked-button type="button" (click)="exportExcel()">{{ 'calendar.exportExcel' | t }}</button>
         </div>
       </form>
+      }
 
       <div class="legend">
         <span><i class="dot planned"></i> Planejado</span>
@@ -192,17 +217,101 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
       </div>
 
       <div class="calendar-card surface-card">
-        <full-calendar [options]="calendarOptions" />
+        <full-calendar #adminCalendar [options]="calendarOptions" />
       </div>
 
+      @if (isMobile()) {
+      <section class="mobile-agenda surface-card">
+        <div class="mobile-agenda-head">
+          <button mat-icon-button type="button" (click)="shiftMobileFocus(-1)">
+            <span aria-hidden="true">‹</span>
+          </button>
+          <div class="mobile-day-meta">
+            <h3>{{ mobileFocusDateLabel() }}</h3>
+            <span>{{ mobileDayAssignments().length }} item(ns)</span>
+          </div>
+          <button mat-icon-button type="button" (click)="shiftMobileFocus(1)">
+            <span aria-hidden="true">›</span>
+          </button>
+        </div>
+
+        <div class="mobile-agenda-list">
+          @for (assignment of mobileDayAssignments(); track assignment.id) {
+            <article class="mobile-agenda-item">
+              <div class="hour">{{ formatTimeFortaleza(assignment.start_at) }}</div>
+              <div class="content">
+                <strong>{{ assignment.activity_type?.name || 'Atividade' }}</strong>
+                <div class="meta">{{ assignment.location?.name || 'Sem local' }}</div>
+                <div class="meta">{{ assignment.status }}</div>
+              </div>
+              <div class="quick-actions">
+                <button mat-button type="button" (click)="openEditDialogForAssignment(assignment)">Editar</button>
+              </div>
+            </article>
+          } @empty {
+            <article class="mobile-empty">Sem alocacoes para este dia.</article>
+          }
+        </div>
+      </section>
+
+      <button class="mobile-fab" mat-fab color="primary" type="button" (click)="quickAddForMobile()">
+        <span aria-hidden="true">+</span>
+      </button>
+      }
+
+      @if (!isMobile()) {
+      <section class="list-section surface-card">
+        <div class="list-tabs" role="tablist" aria-label="Visao desktop">
+          <button
+            type="button"
+            [class.active]="desktopMainTab() === 'assignments'"
+            (click)="setDesktopMainTab('assignments')"
+          >
+            Alocacoes
+          </button>
+          <button
+            type="button"
+            [class.active]="desktopMainTab() === 'attendance'"
+            (click)="setDesktopMainTab('attendance')"
+          >
+            Historico de ponto
+          </button>
+        </div>
+      </section>
+
+      @if (desktopMainTab() === 'assignments') {
       <section class="list-section surface-card">
         <h3>{{ 'calendar.loadedAssignments' | t }}</h3>
+        <div class="list-tabs" role="tablist" aria-label="Filtro de alocacoes">
+          <button
+            type="button"
+            [class.active]="desktopListTab() === 'past'"
+            (click)="setDesktopListTab('past')"
+          >
+            Antigas ({{ desktopTabCount('past') }})
+          </button>
+          <button
+            type="button"
+            [class.active]="desktopListTab() === 'today'"
+            (click)="setDesktopListTab('today')"
+          >
+            Hoje ({{ desktopTabCount('today') }})
+          </button>
+          <button
+            type="button"
+            [class.active]="desktopListTab() === 'future'"
+            (click)="setDesktopListTab('future')"
+          >
+            Futuras ({{ desktopTabCount('future') }})
+          </button>
+        </div>
         <div class="list-wrap">
-          @for (assignment of assignments(); track assignment.id) {
+          @for (assignment of desktopTabAssignments(); track assignment.id) {
             <article class="item">
               <div>
                 <strong>{{ assignment.start_at | tzDate }} - {{ assignment.end_at | tzDate }}</strong>
                 <div class="meta">{{ assignment.activity_type?.name || 'Atividade' }} • {{ assignment.location?.name || 'Sem local' }}</div>
+                <div class="meta">Ponto: {{ attendanceSummary(assignment) }}</div>
               </div>
               <div class="actions">
                 <span class="badge" [class]="badgeClass(assignment.status)">{{ assignment.status }}</span>
@@ -217,13 +326,46 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
                     <small>Depois</small>
                   </a>
                 </div>
-                <button mat-button (click)="remanejar(assignment)">{{ 'calendar.reassign' | t }}</button>
+                @if (desktopListTab() !== 'past') {
+                  <button mat-button (click)="remanejar(assignment)">{{ 'calendar.reassign' | t }}</button>
+                }
                 <button mat-button color="warn" (click)="askDelete(assignment)">Excluir</button>
               </div>
             </article>
+          } @empty {
+            <article class="empty-desktop-tab">Nenhuma alocacao nesta aba.</article>
           }
         </div>
       </section>
+      }
+
+      @if (desktopMainTab() === 'attendance') {
+      <section class="list-section surface-card">
+        <h3>Historico de ponto (janela carregada)</h3>
+        @for (group of attendanceHistoryGroups(); track group.employeeName) {
+          <article class="attendance-group">
+            <h4>{{ group.employeeName }}</h4>
+            <div class="attendance-history">
+              @for (row of group.rows; track row.assignmentId) {
+                <article class="attendance-item">
+                  <div>
+                    <strong>{{ row.startAt | tzDate }} - {{ row.endAt | tzDate }}</strong>
+                    <div class="meta">Status: {{ row.attendanceLabel }}</div>
+                  </div>
+                  <div class="attendance-times">
+                    <span>Entrada: {{ row.checkInLabel }}</span>
+                    <span>Saida: {{ row.checkOutLabel }}</span>
+                  </div>
+                </article>
+              }
+            </div>
+          </article>
+        } @empty {
+          <article class="empty-desktop-tab">Nenhum ponto registrado na janela atual.</article>
+        }
+      </section>
+      }
+      }
     </section>
   `,
   styles: [
@@ -353,6 +495,14 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
         background: rgba(255, 255, 255, 0.95);
       }
 
+      .mobile-topbar {
+        display: none;
+      }
+
+      .mobile-agenda {
+        display: none;
+      }
+
       .list-section {
         padding: 14px;
         background: rgba(255, 255, 255, 0.88);
@@ -450,6 +600,22 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
       }
 
       @media (max-width: 720px) {
+        .hero {
+          padding: 12px;
+        }
+
+        .kpis {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .mobile-topbar {
+          display: flex;
+          gap: 8px;
+          padding: 10px;
+          align-items: center;
+          justify-content: space-between;
+        }
+
         .filters {
           gap: 10px;
           padding: 12px;
@@ -459,18 +625,132 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
         .period-row {
           grid-template-columns: 1fr;
         }
+
+        .legend {
+          font-size: 12px;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .mobile-agenda {
+          display: grid;
+          gap: 10px;
+          padding: 12px;
+        }
+
+        .mobile-agenda-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+        }
+
+        .mobile-agenda-head .mat-mdc-icon-button {
+          display: grid;
+          place-items: center;
+          width: 36px;
+          height: 36px;
+          line-height: 1;
+          padding: 0;
+        }
+
+        .mobile-agenda-head .mat-mdc-icon-button > span {
+          display: inline-block;
+          font-size: 22px;
+          line-height: 1;
+          transform: translateY(-1px);
+        }
+
+        .mobile-day-meta {
+          flex: 1;
+          min-width: 0;
+          text-align: center;
+        }
+
+        .mobile-agenda-head h3 {
+          margin: 0;
+          font-size: 0.98rem;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .mobile-day-meta span {
+          display: block;
+          color: #64748b;
+          font-size: 12px;
+        }
+
+        .mobile-agenda-list {
+          display: grid;
+          gap: 8px;
+        }
+
+        .mobile-agenda-item {
+          display: grid;
+          grid-template-columns: 74px 1fr auto;
+          gap: 10px;
+          align-items: center;
+          border: 1px solid #dbe7f0;
+          border-radius: 10px;
+          background: #fff;
+          padding: 10px;
+        }
+
+        .mobile-agenda-item .hour {
+          font-weight: 700;
+          color: #0f766e;
+          font-size: 0.88rem;
+        }
+
+        .mobile-agenda-item .content strong {
+          display: block;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .mobile-agenda-item .meta {
+          font-size: 12px;
+          color: #64748b;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .mobile-fab {
+          position: fixed;
+          right: 16px;
+          bottom: 18px;
+          z-index: 950;
+        }
       }
     `
   ],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AdminCalendarPageComponent {
+export class AdminCalendarPageComponent implements OnDestroy {
+  @ViewChild('adminCalendar') private adminCalendar?: FullCalendarComponent;
+
   protected readonly employees = signal<CollaboratorView[]>([]);
   protected readonly locations = signal<Location[]>([]);
   protected readonly activityTypes = signal<ActivityType[]>([]);
   protected readonly assignments = signal<Assignment[]>([]);
+  protected readonly desktopMainTab = signal<'assignments' | 'attendance'>('assignments');
+  protected readonly desktopListTab = signal<'past' | 'today' | 'future'>('today');
+  protected readonly isMobile = signal<boolean>(window.matchMedia('(max-width: 720px)').matches);
+  protected readonly showMobileFilters = signal<boolean>(false);
+  protected readonly mobileFocusDate = signal<string>(this.dateKeyFortaleza(new Date()));
   private visibleRange: { start: string; end: string } | null = null;
   private createDialogOpen = false;
+  private readonly mobileMediaQuery = window.matchMedia('(max-width: 720px)');
+  private readonly mobileMediaListener = (event: MediaQueryListEvent): void => {
+    this.isMobile.set(event.matches);
+    if (!event.matches) {
+      this.showMobileFilters.set(false);
+    }
+    this.applyResponsiveCalendarOptions();
+  };
 
   protected readonly filters = this.formBuilder.group({
     employeeProfileId: this.formBuilder.nonNullable.control(''),
@@ -484,7 +764,8 @@ export class AdminCalendarPageComponent {
   protected calendarOptions: CalendarOptions = {
     plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
     locale: ptBrLocale,
-    initialView: 'timeGridWeek',
+    firstDay: 1,
+    initialView: window.matchMedia('(max-width: 720px)').matches ? 'dayGridMonth' : 'timeGridWeek',
     headerToolbar: {
       left: 'prev,next today',
       center: 'title',
@@ -527,13 +808,20 @@ export class AdminCalendarPageComponent {
     private readonly overlay: Overlay,
     private readonly i18n: I18nService
   ) {
+    this.mobileMediaQuery.addEventListener('change', this.mobileMediaListener);
+
     effect(() => {
       const lang = this.i18n.language();
       this.calendarOptions.locale = this.resolveCalendarLocale(lang);
       this.calendarOptions.buttonText = this.resolveCalendarButtonText(lang);
+      this.applyResponsiveCalendarOptions();
       this.calendarOptions = { ...this.calendarOptions };
     });
     void this.bootstrap();
+  }
+
+  ngOnDestroy(): void {
+    this.mobileMediaQuery.removeEventListener('change', this.mobileMediaListener);
   }
 
   private resolveCalendarLocale(lang: 'pt-BR' | 'en' | 'es') {
@@ -558,6 +846,108 @@ export class AdminCalendarPageComponent {
 
   statusCount(status: Assignment['status']): number {
     return this.assignments().filter((item) => item.status === status).length;
+  }
+
+  toggleMobileFilters(): void {
+    this.showMobileFilters.update((value) => !value);
+  }
+
+  goToday(): void {
+    this.adminCalendar?.getApi().today();
+    this.mobileFocusDate.set(this.dateKeyFortaleza(new Date()));
+  }
+
+  shiftMobileFocus(days: number): void {
+    const [year, month, day] = this.mobileFocusDate().split('-').map((part) => Number.parseInt(part, 10));
+    const base = new Date(Date.UTC(year, month - 1, day, 3, 0, 0, 0));
+    base.setUTCDate(base.getUTCDate() + days);
+    this.mobileFocusDate.set(this.dateKeyFortaleza(base));
+    this.adminCalendar?.getApi().gotoDate(base);
+  }
+
+  mobileDayAssignments(): Assignment[] {
+    const key = this.mobileFocusDate();
+    return this.assignments()
+      .filter((assignment) => this.dateKeyFortaleza(assignment.start_at) === key)
+      .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+  }
+
+  setDesktopListTab(tab: 'past' | 'today' | 'future'): void {
+    this.desktopListTab.set(tab);
+  }
+
+  setDesktopMainTab(tab: 'assignments' | 'attendance'): void {
+    this.desktopMainTab.set(tab);
+  }
+
+  desktopTabAssignments(): Assignment[] {
+    const tab = this.desktopListTab();
+    return this.assignments()
+      .filter((assignment) => this.assignmentDayBucket(assignment) === tab)
+      .sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime());
+  }
+
+  desktopTabCount(tab: 'past' | 'today' | 'future'): number {
+    return this.assignments().filter((assignment) => this.assignmentDayBucket(assignment) === tab).length;
+  }
+
+  attendanceHistoryRows(): AttendanceHistoryRow[] {
+    return this.assignments()
+      .filter((assignment) => assignment.attendance)
+      .map((assignment) => {
+        const employeeName =
+          this.employees().find((item) => item.profile.id === assignment.employee_profile_id)?.profile.full_name ?? 'Colaborador';
+        const attendance = assignment.attendance;
+        const attendanceLabel = this.attendanceSummary(assignment);
+        const checkInLabel = attendance?.check_in_at ? this.formatDateTimeFortaleza(attendance.check_in_at) : '-';
+        const checkOutLabel = attendance?.check_out_at ? this.formatDateTimeFortaleza(attendance.check_out_at) : '-';
+
+        return {
+          assignmentId: assignment.id,
+          employeeName,
+          startAt: assignment.start_at,
+          endAt: assignment.end_at,
+          attendanceLabel,
+          checkInLabel,
+          checkOutLabel,
+          sortAt: attendance?.check_in_at ? new Date(attendance.check_in_at).getTime() : new Date(assignment.start_at).getTime()
+        };
+      })
+      .sort((a, b) => b.sortAt - a.sortAt);
+  }
+
+  attendanceHistoryGroups(): AttendanceHistoryGroup[] {
+    const grouped = new Map<string, AttendanceHistoryRow[]>();
+    for (const row of this.attendanceHistoryRows()) {
+      const current = grouped.get(row.employeeName) ?? [];
+      current.push(row);
+      grouped.set(row.employeeName, current);
+    }
+
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
+      .map(([employeeName, rows]) => ({ employeeName, rows }));
+  }
+
+  quickAddForMobile(): void {
+    const key = this.mobileFocusDate();
+    const [year, month, day] = key.split('-').map((part) => Number.parseInt(part, 10));
+    const start = new Date(Date.UTC(year, month - 1, day, 11, 0, 0, 0));
+    const end = new Date(Date.UTC(year, month - 1, day, 21, 0, 0, 0));
+    this.openCreateDialogFromDates(start, end);
+  }
+
+  mobileFocusDateLabel(): string {
+    const key = this.mobileFocusDate();
+    const [year, month, day] = key.split('-').map((part) => Number.parseInt(part, 10));
+    const locale = this.i18n.language() === 'en' ? 'en-US' : this.i18n.language() === 'es' ? 'es-ES' : 'pt-BR';
+    return new Intl.DateTimeFormat(locale, {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Fortaleza'
+    }).format(new Date(Date.UTC(year, month - 1, day, 3, 0, 0, 0)));
   }
 
   badgeClass(status: Assignment['status']): string {
@@ -689,8 +1079,11 @@ export class AdminCalendarPageComponent {
 
   private toEventInput(assignment: Assignment): EventInput {
     const employeeName = this.employees().find((item) => item.profile.id === assignment.employee_profile_id)?.profile.full_name ?? 'Colaborador';
+    const isPast = this.assignmentDayBucket(assignment) === 'past';
 
-    const palette = assignment.attendance?.done
+    const palette = isPast
+      ? { bg: '#94a3b8', border: '#64748b', className: 'fc-event-cancelled' }
+      : assignment.attendance?.done
       ? { bg: '#22c55e', border: '#15803d', className: 'fc-event-confirmed' }
       : assignment.status === 'CANCELLED'
       ? { bg: '#94a3b8', border: '#64748b', className: 'fc-event-cancelled' }
@@ -710,6 +1103,14 @@ export class AdminCalendarPageComponent {
   }
 
   private openCreateDialog(selection: DateSelectArg): void {
+    if (this.isMobile()) {
+      this.mobileFocusDate.set(this.dateKeyFortaleza(selection.start));
+      return;
+    }
+    this.openCreateDialogFromDates(selection.start, selection.end);
+  }
+
+  private openCreateDialogFromDates(start: Date, end: Date): void {
     if (this.createDialogOpen) {
       return;
     }
@@ -732,14 +1133,17 @@ export class AdminCalendarPageComponent {
         employees: this.employees(),
         locations: this.locations(),
         activityTypes: this.activityTypes(),
-        selectedStart: selection.start,
-        selectedEnd: selection.end
+        selectedStart: start,
+        selectedEnd: end
       }
     });
 
     dialogRef.afterClosed().subscribe((result: AssignmentDialogResult | undefined) => {
       this.createDialogOpen = false;
       if (!result) {
+        return;
+      }
+      if (result.action === 'delete') {
         return;
       }
       void this.saveAssignment(result);
@@ -767,6 +1171,11 @@ export class AdminCalendarPageComponent {
       jsEvent: click.jsEvent
     };
 
+    if (this.isMobile()) {
+      this.mobileFocusDate.set(this.dateKeyFortaleza(start));
+      return;
+    }
+
     this.openCreateDialog(pseudoSelection);
   }
 
@@ -776,6 +1185,12 @@ export class AdminCalendarPageComponent {
       return;
     }
 
+    this.mobileFocusDate.set(this.dateKeyFortaleza(assignment.start_at));
+    this.openEditDialogForAssignment(assignment);
+    click.jsEvent.preventDefault();
+  }
+
+  openEditDialogForAssignment(assignment: Assignment): void {
     const dialogRef = this.dialog.open(AssignmentDialogComponent, {
       hasBackdrop: true,
       autoFocus: false,
@@ -796,13 +1211,15 @@ export class AdminCalendarPageComponent {
       if (!result) {
         return;
       }
+      if (result.action === 'delete') {
+        void this.askDelete(assignment);
+        return;
+      }
       void this.saveAssignment(result);
     });
-
-    click.jsEvent.preventDefault();
   }
 
-  private async saveAssignment(input: AssignmentDialogResult): Promise<void> {
+  private async saveAssignment(input: AssignmentDialogSaveResult): Promise<void> {
     if (!navigator.onLine) {
       this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
       return;
@@ -840,7 +1257,7 @@ export class AdminCalendarPageComponent {
     }
   }
 
-  private async upsertSingleAndRefresh(input: AssignmentDialogResult): Promise<void> {
+  private async upsertSingleAndRefresh(input: AssignmentDialogSaveResult): Promise<void> {
     try {
       await this.upsertSingle(input);
       await this.refresh();
@@ -849,7 +1266,7 @@ export class AdminCalendarPageComponent {
     }
   }
 
-  private async upsertSingle(input: AssignmentDialogResult): Promise<void> {
+  private async upsertSingle(input: AssignmentDialogSaveResult): Promise<void> {
     const recurrenceGroupId =
       !input.id && input.repeat_count > 0 ? input.recurrence_group_id ?? crypto.randomUUID() : input.recurrence_group_id ?? null;
 
@@ -877,7 +1294,7 @@ export class AdminCalendarPageComponent {
     this.toastService.success(createdRepeats > 0 ? `Alocacao salva com ${createdRepeats} repeticoes.` : 'Alocacao salva.');
   }
 
-  private async updateSeries(input: AssignmentDialogResult): Promise<void> {
+  private async updateSeries(input: AssignmentDialogSaveResult): Promise<void> {
     if (!input.recurrence_group_id) {
       return;
     }
@@ -903,7 +1320,7 @@ export class AdminCalendarPageComponent {
     await this.refresh();
   }
 
-  private async updateSeriesWithHandling(input: AssignmentDialogResult): Promise<void> {
+  private async updateSeriesWithHandling(input: AssignmentDialogSaveResult): Promise<void> {
     try {
       await this.updateSeries(input);
     } catch (error) {
@@ -911,7 +1328,7 @@ export class AdminCalendarPageComponent {
     }
   }
 
-  private async createRepeatedAssignments(input: AssignmentDialogResult, recurrenceGroupId: string | null): Promise<number> {
+  private async createRepeatedAssignments(input: AssignmentDialogSaveResult, recurrenceGroupId: string | null): Promise<number> {
     const repeatCount = Math.max(0, Math.trunc(input.repeat_count || 0));
     const repeatIntervalDays = Math.max(1, Math.trunc(input.repeat_interval_days || 1));
     if (repeatCount === 0) {
@@ -994,6 +1411,13 @@ export class AdminCalendarPageComponent {
   async askDelete(assignment: Assignment): Promise<void> {
     if (assignment.recurrence_group_id) {
       const ref = this.dialog.open(ConfirmDialogComponent, {
+        hasBackdrop: true,
+        autoFocus: false,
+        restoreFocus: true,
+        scrollStrategy: this.dialogScrollStrategy(),
+        width: 'calc(100vw - 24px)',
+        maxWidth: '420px',
+        panelClass: 'confirm-dialog-panel',
         data: {
           title: 'Excluir repeticao',
           message: 'Escolha como deseja excluir esta alocacao repetida.',
@@ -1019,6 +1443,13 @@ export class AdminCalendarPageComponent {
     }
 
     const ref = this.dialog.open(ConfirmDialogComponent, {
+      hasBackdrop: true,
+      autoFocus: false,
+      restoreFocus: true,
+      scrollStrategy: this.dialogScrollStrategy(),
+      width: 'calc(100vw - 24px)',
+      maxWidth: '420px',
+      panelClass: 'confirm-dialog-panel',
       data: { title: 'Excluir alocacao', message: 'Deseja remover esta alocacao?', confirmText: 'Excluir' }
     });
 
@@ -1153,6 +1584,14 @@ export class AdminCalendarPageComponent {
     if (!filters.startDate && !filters.endDate) {
       void this.refresh();
     }
+
+    if (this.isMobile()) {
+      const current = this.mobileFocusDate();
+      const currentDate = new Date(`${current}T03:00:00.000Z`);
+      if (currentDate < arg.start || currentDate > arg.end) {
+        this.mobileFocusDate.set(this.dateKeyFortaleza(arg.start));
+      }
+    }
   }
 
   private toRangeEndIso(date: Date): string {
@@ -1168,6 +1607,90 @@ export class AdminCalendarPageComponent {
       minute: '2-digit',
       timeZone: 'America/Fortaleza'
     }).format(new Date(value));
+  }
+
+  attendanceSummary(assignment: Assignment): string {
+    const attendance = assignment.attendance;
+    if (!attendance) {
+      return 'Nao iniciado';
+    }
+
+    if (attendance.done || attendance.status === 'DONE') {
+      const checkIn = attendance.check_in_at ? this.formatTimeFortaleza(attendance.check_in_at) : '--:--';
+      const checkOut = attendance.check_out_at ? this.formatTimeFortaleza(attendance.check_out_at) : '--:--';
+      return `Concluido (${checkIn} - ${checkOut})`;
+    }
+
+    if (attendance.status === 'CHECKED_IN') {
+      const checkIn = attendance.check_in_at ? this.formatTimeFortaleza(attendance.check_in_at) : '--:--';
+      return `Check-in realizado (${checkIn})`;
+    }
+
+    return 'Nao iniciado';
+  }
+
+  formatTimeFortaleza(value: string): string {
+    return new Intl.DateTimeFormat('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Fortaleza'
+    }).format(new Date(value));
+  }
+
+  private dateKeyFortaleza(value: Date | string): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Fortaleza',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(typeof value === 'string' ? new Date(value) : value);
+  }
+
+  private assignmentDayBucket(assignment: Assignment): 'past' | 'today' | 'future' {
+    const todayKey = this.dateKeyFortaleza(new Date());
+    const startKey = this.dateKeyFortaleza(assignment.start_at);
+    const endMs = new Date(assignment.end_at).getTime();
+    const endKey = this.dateKeyFortaleza(new Date(endMs - 1));
+
+    if (endKey < todayKey) {
+      return 'past';
+    }
+
+    if (startKey > todayKey) {
+      return 'future';
+    }
+
+    return 'today';
+  }
+
+  private applyResponsiveCalendarOptions(): void {
+    if (this.isMobile()) {
+      this.calendarOptions.headerToolbar = {
+        left: 'prev,next',
+        center: 'title',
+        right: 'dayGridMonth,timeGridDay'
+      };
+      this.calendarOptions.dayMaxEventRows = 2;
+      this.calendarOptions.eventMinHeight = 22;
+    } else {
+      this.calendarOptions.headerToolbar = {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+      };
+      this.calendarOptions.dayMaxEventRows = false;
+      this.calendarOptions.eventMinHeight = 18;
+    }
+
+    const api = this.adminCalendar?.getApi();
+    if (api) {
+      if (this.isMobile() && api.view.type === 'timeGridWeek') {
+        api.changeView('dayGridMonth');
+      }
+      if (!this.isMobile() && api.view.type === 'dayGridMonth') {
+        api.changeView('timeGridWeek');
+      }
+    }
   }
 
   private timestampSuffix(): string {
