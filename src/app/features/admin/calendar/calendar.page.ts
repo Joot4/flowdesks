@@ -470,6 +470,7 @@ export class AdminCalendarPageComponent {
   protected readonly activityTypes = signal<ActivityType[]>([]);
   protected readonly assignments = signal<Assignment[]>([]);
   private visibleRange: { start: string; end: string } | null = null;
+  private createDialogOpen = false;
 
   protected readonly filters = this.formBuilder.group({
     employeeProfileId: this.formBuilder.nonNullable.control(''),
@@ -709,11 +710,16 @@ export class AdminCalendarPageComponent {
   }
 
   private openCreateDialog(selection: DateSelectArg): void {
+    if (this.createDialogOpen) {
+      return;
+    }
+
     if (!navigator.onLine) {
       this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
       return;
     }
 
+    this.createDialogOpen = true;
     const dialogRef = this.dialog.open(AssignmentDialogComponent, {
       hasBackdrop: true,
       autoFocus: false,
@@ -732,6 +738,7 @@ export class AdminCalendarPageComponent {
     });
 
     dialogRef.afterClosed().subscribe((result: AssignmentDialogResult | undefined) => {
+      this.createDialogOpen = false;
       if (!result) {
         return;
       }
