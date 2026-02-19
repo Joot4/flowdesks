@@ -9,8 +9,10 @@ import { MatInputModule } from '@angular/material/input';
 import { DateAdapter, MAT_DATE_FORMATS, MatDateFormats, MatNativeDateModule, NativeDateAdapter } from '@angular/material/core';
 import { MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
+import { Overlay } from '@angular/cdk/overlay';
 import { FullCalendarModule } from '@fullcalendar/angular';
 import { CalendarOptions, DateSelectArg, DatesSetArg, EventClickArg, EventDropArg, EventInput, EventContentArg } from '@fullcalendar/core';
+import { DateClickArg } from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
 import enGbLocale from '@fullcalendar/core/locales/en-gb';
 import esLocale from '@fullcalendar/core/locales/es';
@@ -499,6 +501,9 @@ export class AdminCalendarPageComponent {
     slotMaxTime: '23:00:00',
     height: 'auto',
     selectable: true,
+    selectLongPressDelay: 120,
+    longPressDelay: 120,
+    selectMinDistance: 0,
     editable: true,
     events: [],
     eventContent: (arg: EventContentArg) => ({
@@ -506,6 +511,7 @@ export class AdminCalendarPageComponent {
     }),
     datesSet: (arg) => this.onDatesSet(arg),
     select: (selection) => this.openCreateDialog(selection),
+    dateClick: (click) => this.openCreateDialogByClick(click),
     eventClick: (click) => this.openEditDialog(click),
     eventDrop: (drop) => this.onEventDrop(drop)
   };
@@ -517,6 +523,7 @@ export class AdminCalendarPageComponent {
     private readonly catalogsService: CatalogsService,
     private readonly toastService: ToastService,
     private readonly dialog: MatDialog,
+    private readonly overlay: Overlay,
     private readonly i18n: I18nService
   ) {
     effect(() => {
@@ -708,6 +715,13 @@ export class AdminCalendarPageComponent {
     }
 
     const dialogRef = this.dialog.open(AssignmentDialogComponent, {
+      hasBackdrop: true,
+      autoFocus: false,
+      restoreFocus: true,
+      scrollStrategy: this.dialogScrollStrategy(),
+      width: '94vw',
+      maxWidth: '1100px',
+      panelClass: 'assignment-dialog-panel',
       data: {
         employees: this.employees(),
         locations: this.locations(),
@@ -725,6 +739,30 @@ export class AdminCalendarPageComponent {
     });
   }
 
+  private openCreateDialogByClick(click: DateClickArg): void {
+    const start = new Date(click.date);
+    const end = new Date(click.date);
+
+    if (click.allDay) {
+      start.setHours(8, 0, 0, 0);
+      end.setHours(18, 0, 0, 0);
+    } else {
+      end.setHours(end.getHours() + 1);
+    }
+
+    const pseudoSelection: DateSelectArg = {
+      allDay: false,
+      start,
+      end,
+      startStr: start.toISOString(),
+      endStr: end.toISOString(),
+      view: click.view,
+      jsEvent: click.jsEvent
+    };
+
+    this.openCreateDialog(pseudoSelection);
+  }
+
   private openEditDialog(click: EventClickArg): void {
     const assignment = this.assignments().find((item) => item.id === click.event.id);
     if (!assignment) {
@@ -732,6 +770,13 @@ export class AdminCalendarPageComponent {
     }
 
     const dialogRef = this.dialog.open(AssignmentDialogComponent, {
+      hasBackdrop: true,
+      autoFocus: false,
+      restoreFocus: true,
+      scrollStrategy: this.dialogScrollStrategy(),
+      width: '94vw',
+      maxWidth: '1100px',
+      panelClass: 'assignment-dialog-panel',
       data: {
         assignment,
         employees: this.employees(),
@@ -921,6 +966,13 @@ export class AdminCalendarPageComponent {
 
   remanejar(assignment: Assignment): void {
     const ref = this.dialog.open(ReassignDialogComponent, {
+      hasBackdrop: true,
+      autoFocus: false,
+      restoreFocus: true,
+      scrollStrategy: this.dialogScrollStrategy(),
+      width: '94vw',
+      maxWidth: '560px',
+      panelClass: 'reassign-dialog-panel',
       data: { employees: this.employees(), currentEmployeeProfileId: assignment.employee_profile_id }
     });
 
@@ -1014,6 +1066,17 @@ export class AdminCalendarPageComponent {
     } catch (error) {
       this.handleAssignmentError(error);
     }
+  }
+
+  private isMobileDialogViewport(): boolean {
+    return window.matchMedia('(max-width: 760px)').matches;
+  }
+
+  private dialogScrollStrategy() {
+    if (this.isMobileDialogViewport()) {
+      return this.overlay.scrollStrategies.reposition();
+    }
+    return this.overlay.scrollStrategies.block();
   }
 
   private handleAssignmentError(error: unknown): void {

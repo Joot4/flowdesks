@@ -23,7 +23,7 @@ export interface ReassignDialogResult {
   imports: [ReactiveFormsModule, MatDialogModule, MatButtonModule, MatFormFieldModule, MatInputModule, MatSelectModule],
   template: `
     <h2 mat-dialog-title>Remanejar alocacao</h2>
-    <mat-dialog-content>
+    <mat-dialog-content class="dialog-content">
       <form class="form" [formGroup]="form">
         <mat-form-field appearance="fill">
           <mat-label>Novo colaborador</mat-label>
@@ -50,9 +50,18 @@ export interface ReassignDialogResult {
   styles: [
     `
       .form {
-        min-width: 380px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
         display: grid;
         gap: 8px;
+      }
+
+      .dialog-content {
+        max-height: min(72vh, 560px);
+        overflow: auto;
+        width: 100%;
+        max-width: 100%;
       }
     `
   ],

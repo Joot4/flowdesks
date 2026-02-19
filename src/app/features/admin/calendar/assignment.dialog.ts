@@ -63,7 +63,7 @@ export interface AssignmentDialogResult {
   ],
   template: `
     <h2 mat-dialog-title>{{ data.assignment ? 'Editar alocacao' : 'Nova alocacao' }}</h2>
-    <mat-dialog-content>
+    <mat-dialog-content class="dialog-content">
       <form class="form" [formGroup]="form">
         <h3 class="section-title">Informations</h3>
         <div class="info-select-grid">
@@ -218,9 +218,18 @@ export interface AssignmentDialogResult {
   styles: [
     `
       .form {
-        min-width: 520px;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
         display: grid;
         gap: 10px;
+      }
+
+      .dialog-content {
+        max-height: min(76vh, 780px);
+        overflow: auto;
+        width: 100%;
+        max-width: 100%;
       }
 
       .info-select-grid {
@@ -253,9 +262,20 @@ export interface AssignmentDialogResult {
         grid-template-columns: repeat(2, minmax(120px, 1fr));
       }
 
+      @media (max-width: 1024px) {
+        .info-select-grid,
+        .crew-grid {
+          grid-template-columns: repeat(2, minmax(120px, 1fr));
+        }
+
+        .wages-grid {
+          grid-template-columns: repeat(2, minmax(120px, 1fr));
+        }
+      }
+
       @media (max-width: 700px) {
         .form {
-          min-width: 100%;
+          width: 100%;
         }
 
         .info-select-grid,

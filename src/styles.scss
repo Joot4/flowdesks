@@ -36,6 +36,15 @@ $theme: mat.define-light-theme(
 html,
 body {
   height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+html.cdk-global-scrollblock,
+body.cdk-global-scrollblock {
+  left: 0 !important;
+  right: 0 !important;
+  overflow-x: hidden !important;
 }
 
 body {
@@ -45,7 +54,9 @@ body {
     radial-gradient(circle at 0% 0%, #d9f6ff 0%, transparent 42%),
     radial-gradient(circle at 100% 0%, #d7fff4 0%, transparent 40%),
     linear-gradient(140deg, var(--bg-a), var(--bg-b));
+  overflow-x: hidden;
 }
+
 
 *,
 *::before,
@@ -185,6 +196,62 @@ mat-card,
   .mat-mdc-dialog-container .mdc-dialog__surface {
     width: min(96vw, 720px) !important;
     max-width: 96vw !important;
+  }
+}
+
+.assignment-dialog-panel .mdc-dialog__surface {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto;
+  max-height: 92dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.reassign-dialog-panel .mdc-dialog__surface {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto;
+  max-height: 92dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.assignment-dialog-panel .mdc-dialog__container,
+.reassign-dialog-panel .mdc-dialog__container {
+  margin-left: -100px !important;
+  margin-right: 12px !important;
+  justify-content: center !important;
+}
+
+.assignment-dialog-panel .mat-mdc-dialog-surface,
+.reassign-dialog-panel .mat-mdc-dialog-surface {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+.assignment-dialog-panel .mat-mdc-dialog-content,
+.reassign-dialog-panel .mat-mdc-dialog-content {
+  max-height: none !important;
+  overflow: auto !important;
+  padding-bottom: 12px !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.assignment-dialog-panel .mat-mdc-dialog-actions,
+.reassign-dialog-panel .mat-mdc-dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: #fff;
+  padding-bottom: max(10px, env(safe-area-inset-bottom)) !important;
+  border-top: 1px solid #e2e8f0;
+}
+
+@media (max-width: 760px) {
+  .assignment-dialog-panel .mdc-dialog__surface,
+  .reassign-dialog-panel .mdc-dialog__surface {
+    max-height: 96dvh !important;
   }
 }
 
