@@ -6,10 +6,12 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTableModule } from '@angular/material/table';
+import { MatDialog } from '@angular/material/dialog';
 import { CatalogsService } from '../../../core/supabase/catalogs.service';
 import { ToastService } from '../../../core/ui/toast.service';
 import { ActivityType } from '../../../shared/models/assignment.model';
 import { TranslatePipe } from '../../../shared/pipes/t.pipe';
+import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
 
 @Component({
   selector: 'app-activity-types-page',
@@ -29,16 +31,25 @@ import { TranslatePipe } from '../../../shared/pipes/t.pipe';
 
     <div class="table-wrap">
       <table mat-table [dataSource]="activityTypes()">
-      <ng-container matColumnDef="name">
-        <th mat-header-cell *matHeaderCellDef>{{ 'common.name' | t }}</th>
-        <td mat-cell *matCellDef="let row">{{ row.name }}</td>
-      </ng-container>
-      <ng-container matColumnDef="active">
-        <th mat-header-cell *matHeaderCellDef>{{ 'locations.status' | t }}</th>
-        <td mat-cell *matCellDef="let row">{{ row.active ? 'Ativo' : 'Inativo' }}</td>
-      </ng-container>
-      <tr mat-header-row *matHeaderRowDef="columns"></tr>
-      <tr mat-row *matRowDef="let row; columns: columns" (click)="edit(row)"></tr>
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef>{{ 'common.name' | t }}</th>
+          <td mat-cell *matCellDef="let row">{{ row.name }}</td>
+        </ng-container>
+        <ng-container matColumnDef="active">
+          <th mat-header-cell *matHeaderCellDef>{{ 'locations.status' | t }}</th>
+          <td mat-cell *matCellDef="let row">{{ row.active ? 'Ativo' : 'Inativo' }}</td>
+        </ng-container>
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef class="actions-header">{{ 'common.actions' | t }}</th>
+          <td mat-cell *matCellDef="let row">
+            <div class="actions-cell">
+              <button mat-stroked-button type="button" (click)="edit(row)">{{ 'common.edit' | t }}</button>
+              <button mat-stroked-button color="warn" type="button" (click)="askDelete(row)">{{ 'common.delete' | t }}</button>
+            </div>
+          </td>
+        </ng-container>
+        <tr mat-header-row *matHeaderRowDef="columns"></tr>
+        <tr mat-row *matRowDef="let row; columns: columns"></tr>
       </table>
     </div>
   `,
@@ -60,6 +71,18 @@ import { TranslatePipe } from '../../../shared/pipes/t.pipe';
         overflow-x: auto;
       }
 
+      .actions-cell {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 52px;
+      }
+
+      .actions-header {
+        text-align: left;
+      }
+
       @media (max-width: 700px) {
         .create-form {
           grid-template-columns: 1fr;
@@ -71,7 +94,7 @@ import { TranslatePipe } from '../../../shared/pipes/t.pipe';
 })
 export class ActivityTypesPageComponent {
   protected readonly activityTypes = signal<ActivityType[]>([]);
-  protected readonly columns = ['name', 'active'];
+  protected readonly columns = ['name', 'active', 'actions'];
 
   protected readonly form = this.formBuilder.nonNullable.group({
     id: [''],
@@ -82,7 +105,8 @@ export class ActivityTypesPageComponent {
   constructor(
     private readonly formBuilder: FormBuilder,
     private readonly catalogsService: CatalogsService,
-    private readonly toastService: ToastService
+    private readonly toastService: ToastService,
+    private readonly dialog: MatDialog
   ) {
     void this.load();
   }
@@ -108,6 +132,33 @@ export class ActivityTypesPageComponent {
       await this.catalogsService.upsertActivityType(this.form.getRawValue());
       this.form.reset({ id: '', name: '', active: true });
       this.toastService.success('Tipo salvo.');
+      await this.load();
+    } catch (error) {
+      this.toastService.error((error as Error).message);
+    }
+  }
+
+  askDelete(activityType: ActivityType): void {
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      data: {
+        title: 'Excluir atividade',
+        message: `Deseja remover a atividade "${activityType.name}"?`,
+        confirmText: 'Excluir'
+      }
+    });
+
+    ref.afterClosed().subscribe((confirmed: boolean) => {
+      if (!confirmed) {
+        return;
+      }
+      void this.delete(activityType.id);
+    });
+  }
+
+  private async delete(id: string): Promise<void> {
+    try {
+      await this.catalogsService.deleteActivityType(id);
+      this.toastService.success('Atividade removida.');
       await this.load();
     } catch (error) {
       this.toastService.error((error as Error).message);

@@ -45,8 +45,10 @@ import { TranslatePipe } from '../../../shared/pipes/t.pipe';
         <ng-container matColumnDef="actions">
           <th mat-header-cell *matHeaderCellDef>{{ 'common.actions' | t }}</th>
           <td mat-cell *matCellDef="let row">
-            <button mat-button [disabled]="submitting()" (click)="edit(row)">{{ 'common.edit' | t }}</button>
-            <button mat-button color="warn" [disabled]="submitting()" (click)="askDelete(row)">{{ 'common.delete' | t }}</button>
+            <div class="actions-cell">
+              <button mat-stroked-button [disabled]="submitting()" (click)="edit(row)">{{ 'common.edit' | t }}</button>
+              <button mat-stroked-button color="warn" [disabled]="submitting()" (click)="askDelete(row)">{{ 'common.delete' | t }}</button>
+            </div>
           </td>
         </ng-container>
 
@@ -72,6 +74,14 @@ import { TranslatePipe } from '../../../shared/pipes/t.pipe';
 
       .table-wrap {
         overflow-x: auto;
+      }
+
+      .actions-cell {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-start;
+        min-height: 52px;
       }
 
       @media (max-width: 740px) {
