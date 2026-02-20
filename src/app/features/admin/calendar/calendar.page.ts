@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, ViewChild, effect, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, OnDestroy, ViewChild, effect, signal } from '@angular/core';
 import { CommonModule, formatDate } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -765,7 +765,7 @@ class ShortUsDateAdapter extends NativeDateAdapter {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AdminCalendarPageComponent implements OnDestroy {
+export class AdminCalendarPageComponent implements OnDestroy, AfterViewInit {
   @ViewChild('adminCalendar') private adminCalendar?: FullCalendarComponent;
 
   protected readonly employees = signal<CollaboratorView[]>([]);
@@ -872,6 +872,10 @@ export class AdminCalendarPageComponent implements OnDestroy {
       this.calendarOptions = { ...this.calendarOptions };
     });
     void this.bootstrap();
+  }
+
+  ngAfterViewInit(): void {
+    this.syncCalendarSize();
   }
 
   ngOnDestroy(): void {
@@ -1683,6 +1687,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
       if (currentDate < arg.start || currentDate > arg.end) {
         this.setMobileFocusDate(arg.start);
       }
+      this.syncCalendarSize();
     }
   }
 
@@ -1814,7 +1819,20 @@ export class AdminCalendarPageComponent implements OnDestroy {
       if (!this.isMobile() && api.view.type === 'dayGridMonth') {
         api.changeView(CENTERED_WEEK_VIEW);
       }
+      this.syncCalendarSize();
     }
+  }
+
+  private syncCalendarSize(): void {
+    const api = this.adminCalendar?.getApi();
+    if (!api) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      api.updateSize();
+      requestAnimationFrame(() => api.updateSize());
+    });
   }
 
   private timestampSuffix(): string {

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ViewChild, computed, effect, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FullCalendarModule } from '@fullcalendar/angular';
 import { CalendarOptions, EventClickArg, EventContentArg, EventInput } from '@fullcalendar/core';
@@ -226,7 +226,8 @@ const CENTERED_WEEK_VIEW = 'timeGridCenteredWeek';
   ],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class MyCalendarPageComponent {
+export class MyCalendarPageComponent implements AfterViewInit {
+  @ViewChild(FullCalendarComponent) private calendar?: FullCalendarComponent;
   protected readonly assignments = signal<Assignment[]>([]);
   protected readonly isPunching = signal<boolean>(false);
   protected readonly isPhotoProcessing = signal<boolean>(false);
@@ -320,6 +321,7 @@ export class MyCalendarPageComponent {
         }
       };
       this.calendarOptions = { ...this.calendarOptions };
+      this.syncCalendarSize();
     });
 
     effect(() => {
@@ -329,6 +331,10 @@ export class MyCalendarPageComponent {
       }
       void this.load(profileId);
     });
+  }
+
+  ngAfterViewInit(): void {
+    this.syncCalendarSize();
   }
 
   private resolveCalendarLocale(lang: 'pt-BR' | 'en' | 'es') {
@@ -365,11 +371,13 @@ export class MyCalendarPageComponent {
 
       this.assignments.set(data);
       this.calendarOptions.events = data.map((assignment) => this.toEvent(assignment));
+      this.syncCalendarSize();
     } catch (error) {
       if (!navigator.onLine) {
         const cached = await this.assignmentsService.readCachedAssignments();
         this.assignments.set(cached);
         this.calendarOptions.events = cached.map((assignment) => this.toEvent(assignment));
+        this.syncCalendarSize();
         return;
       }
       this.toastService.error((error as Error).message);
@@ -710,4 +718,17 @@ export class MyCalendarPageComponent {
 
     return raw;
   }
+
+  private syncCalendarSize(): void {
+    const api = this.calendar?.getApi();
+    if (!api) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      api.updateSize();
+      requestAnimationFrame(() => api.updateSize());
+    });
+  }
 }
+import { FullCalendarComponent } from '@fullcalendar/angular';
