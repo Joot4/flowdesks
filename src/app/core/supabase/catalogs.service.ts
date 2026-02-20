@@ -34,6 +34,9 @@ export class CatalogsService {
   async deleteLocation(id: string): Promise<void> {
     const { error } = await supabase.from('locations').delete().eq('id', id);
     if (error) {
+      if (error.code === '23503' && error.message.includes('assignments_location_id_fkey')) {
+        throw new Error('Este local possui alocacoes vinculadas. Rode as migrations mais recentes e tente novamente.');
+      }
       throw error;
     }
   }
@@ -62,6 +65,9 @@ export class CatalogsService {
   async deleteActivityType(id: string): Promise<void> {
     const { error } = await supabase.from('activity_types').delete().eq('id', id);
     if (error) {
+      if (error.code === '23503' && error.message.includes('assignments_activity_type_id_fkey')) {
+        throw new Error('Esta atividade possui alocacoes vinculadas. Rode as migrations mais recentes e tente novamente.');
+      }
       throw error;
     }
   }

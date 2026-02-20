@@ -12,6 +12,7 @@
       <span class="user">{{ profile.full_name || profile.role }}</span>
       @if (profile.role === 'COLLABORATOR') {
         <button mat-stroked-button routerLink="/me/ponto">{{ 'app.punch' | t }}</button>
+        <button mat-stroked-button routerLink="/me/solicitacoes">{{ 'app.requests' | t }}</button>
         <button mat-stroked-button routerLink="/me/perfil">{{ 'app.profile' | t }}</button>
       }
       <button mat-stroked-button [matMenuTriggerFor]="langMenu">{{ 'lang.label' | t }}</button>
@@ -25,6 +26,7 @@
       <button mat-stroked-button [matMenuTriggerFor]="accountMenu">{{ 'app.account' | t }}</button>
       <mat-menu #accountMenu="matMenu">
         @if (profile.role === 'COLLABORATOR') {
+          <button mat-menu-item routerLink="/me/solicitacoes">{{ 'app.requests' | t }}</button>
           <button mat-menu-item routerLink="/me/perfil">{{ 'app.profile' | t }}</button>
         }
         <button mat-menu-item (click)="logout()">{{ 'app.logout' | t }}</button>

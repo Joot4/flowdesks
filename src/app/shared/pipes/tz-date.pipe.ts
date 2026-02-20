@@ -12,9 +12,13 @@ export class TzDatePipe implements PipeTransform {
     }
 
     const date = value instanceof Date ? value : new Date(value);
-    const formatter = new Intl.DateTimeFormat('pt-BR', {
-      dateStyle: 'short',
-      timeStyle: withTime ? 'short' : undefined,
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      hour: withTime ? '2-digit' : undefined,
+      minute: withTime ? '2-digit' : undefined,
+      hour12: false,
       timeZone: environment.timezone
     });
 

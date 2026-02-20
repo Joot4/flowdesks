@@ -144,19 +144,25 @@ export class EmployeesService {
   }
 
   async deactivateCollaborator(profileId: string): Promise<void> {
-    const { error: employeeDeleteError } = await supabase.from('employees').delete().eq('profile_id', profileId);
-    if (employeeDeleteError) {
-      throw employeeDeleteError;
-    }
-
-    const { error: profileUpdateError } = await supabase
+    const { data: updatedProfile, error: profileUpdateError } = await supabase
       .from('profiles')
       .update({ active: false })
       .eq('id', profileId)
-      .eq('role', 'COLLABORATOR');
+      .eq('role', 'COLLABORATOR')
+      .select('id')
+      .maybeSingle<{ id: string }>();
 
     if (profileUpdateError) {
       throw profileUpdateError;
+    }
+
+    if (!updatedProfile) {
+      throw new Error('Nao foi possivel desativar o colaborador. Verifique permissoes do usuario logado.');
+    }
+
+    const { error: employeeDeleteError } = await supabase.from('employees').delete().eq('profile_id', profileId);
+    if (employeeDeleteError) {
+      throw employeeDeleteError;
     }
   }
 }

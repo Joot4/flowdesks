@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, Inject } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -78,10 +78,19 @@ export type AssignmentDialogResult = AssignmentDialogSaveResult | AssignmentDial
         <div class="info-select-grid">
           <mat-form-field appearance="fill">
             <mat-label>Location (cadastro)</mat-label>
-            <mat-select formControlName="location_id">
-              <mat-option [value]="null">Sem local</mat-option>
-              @for (location of data.locations; track location.id) {
-                <mat-option [value]="location.id">{{ location.name }}</mat-option>
+            <mat-select formControlName="location_id" placeholder="Selecione um local" (openedChange)="onLocationOpenedChange($event)">
+              <mat-option class="location-search-option">
+                <input
+                  matInput
+                  class="location-search-input"
+                  [formControl]="locationSearchControl"
+                  placeholder="Buscar local por nome, endereco ou state"
+                  (click)="$event.stopPropagation()"
+                  (keydown)="$event.stopPropagation()"
+                />
+              </mat-option>
+              @for (location of filteredLocations(); track location.id) {
+                <mat-option [value]="location.id">{{ locationOptionLabel(location) }}</mat-option>
               }
             </mat-select>
           </mat-form-field>
@@ -250,6 +259,23 @@ export type AssignmentDialogResult = AssignmentDialogSaveResult | AssignmentDial
         grid-template-columns: repeat(3, minmax(120px, 1fr));
       }
 
+      .location-search-option {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: #fff;
+      }
+
+      .location-search-input {
+        width: 100%;
+        min-width: 220px;
+      }
+
+      .location-search-input::placeholder {
+        color: #64748b;
+        opacity: 1;
+      }
+
       .crew-grid {
         display: grid;
         gap: 10px;
@@ -309,6 +335,7 @@ export type AssignmentDialogResult = AssignmentDialogSaveResult | AssignmentDial
 })
 export class AssignmentDialogComponent {
   private readonly repeatPrefs = this.readRepeatPrefs();
+  readonly locationSearchControl = new FormControl<string>('', { nonNullable: true });
 
   readonly form = this.formBuilder.nonNullable.group({
     id: [this.data.assignment?.id ?? ''],
@@ -357,6 +384,30 @@ export class AssignmentDialogComponent {
   get selectedLocationState(): string {
     const selected = this.selectedLocation();
     return selected?.state ?? this.data.assignment?.assignment_state ?? '-';
+  }
+
+  locationOptionLabel(location: Location): string {
+    const parts = [location.name, location.address?.trim() || '', location.state?.trim() || ''].filter(Boolean);
+    return parts.join(' - ');
+  }
+
+  filteredLocations(): Location[] {
+    const term = this.normalizeText(this.locationSearchControl.value);
+    if (!term) {
+      return this.data.locations;
+    }
+
+    return this.data.locations.filter((location) => {
+      const searchable = `${location.name} ${location.address ?? ''} ${location.state ?? ''}`;
+      return this.normalizeText(searchable).includes(term);
+    });
+  }
+
+  onLocationOpenedChange(opened: boolean): void {
+    if (opened) {
+      return;
+    }
+    this.locationSearchControl.setValue('', { emitEvent: false });
   }
 
   get selectedActivityDescription(): string {
@@ -461,6 +512,14 @@ export class AssignmentDialogComponent {
   private normalizeDash(value: string): string | null {
     const trimmed = value.trim();
     return trimmed === '-' ? null : trimmed;
+  }
+
+  private normalizeText(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
   }
 
   private setupTotalAmountAutoCalculation(): void {

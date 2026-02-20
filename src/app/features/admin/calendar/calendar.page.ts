@@ -13,12 +13,12 @@ import { FullCalendarComponent, FullCalendarModule } from '@fullcalendar/angular
 import { CalendarOptions, DateSelectArg, DatesSetArg, EventClickArg, EventDropArg, EventInput, EventContentArg, DayCellContentArg } from '@fullcalendar/core';
 import { DateClickArg } from '@fullcalendar/interaction';
 import ptBrLocale from '@fullcalendar/core/locales/pt-br';
-import enGbLocale from '@fullcalendar/core/locales/en-gb';
 import esLocale from '@fullcalendar/core/locales/es';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { AssignmentsService } from '../../../core/supabase/assignments.service';
+import { AttendanceAdjustmentRequestView, AttendanceRequestsService } from '../../../core/supabase/attendance-requests.service';
 import { CatalogsService } from '../../../core/supabase/catalogs.service';
 import { CollaboratorView, EmployeesService } from '../../../core/supabase/employees.service';
 import { ToastService } from '../../../core/ui/toast.service';
@@ -37,6 +37,8 @@ interface PaylistRow {
   state: string;
   dateStart: string;
   dateEnd: string;
+  checkIn: string;
+  checkOut: string;
   identification: string;
   service: string;
   activityDescription: string;
@@ -59,6 +61,7 @@ interface AttendanceHistoryRow {
   attendanceLabel: string;
   checkInLabel: string;
   checkOutLabel: string;
+  photosCount: number;
   sortAt: number;
 }
 
@@ -67,21 +70,27 @@ interface AttendanceHistoryGroup {
   rows: AttendanceHistoryRow[];
 }
 
-const SHORT_PT_BR_DATE_FORMATS: MatDateFormats = {
+interface PendingRequestView extends AttendanceAdjustmentRequestView {
+  employeeName: string;
+}
+
+const CENTERED_WEEK_VIEW = 'timeGridCenteredWeek';
+
+const SHORT_US_DATE_FORMATS: MatDateFormats = {
   parse: {
-    dateInput: 'dd/MM/yyyy'
+    dateInput: 'MM/dd/yyyy'
   },
   display: {
-    dateInput: 'dd/MM/yyyy',
+    dateInput: 'MM/dd/yyyy',
     monthYearLabel: 'MMM yyyy',
     dateA11yLabel: 'LL',
     monthYearA11yLabel: 'MMMM yyyy'
   }
 };
 
-class ShortPtBrDateAdapter extends NativeDateAdapter {
+class ShortUsDateAdapter extends NativeDateAdapter {
   override format(date: Date): string {
-    return formatDate(date, 'dd/MM/yyyy', 'pt-BR');
+    return formatDate(date, 'MM/dd/yyyy', 'en-US');
   }
 }
 
@@ -102,8 +111,8 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
     TranslatePipe
   ],
   providers: [
-    { provide: DateAdapter, useClass: ShortPtBrDateAdapter },
-    { provide: MAT_DATE_FORMATS, useValue: SHORT_PT_BR_DATE_FORMATS }
+    { provide: DateAdapter, useClass: ShortUsDateAdapter },
+    { provide: MAT_DATE_FORMATS, useValue: SHORT_US_DATE_FORMATS }
   ],
   template: `
     <section class="calendar-shell">
@@ -160,7 +169,7 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
             <mat-select formControlName="locationId">
               <mat-option value="">{{ 'common.all' | t }}</mat-option>
               @for (location of locations(); track location.id) {
-                <mat-option [value]="location.id">{{ location.name }}</mat-option>
+                <mat-option [value]="location.id">{{ locationOptionLabel(location) }}</mat-option>
               }
             </mat-select>
           </mat-form-field>
@@ -240,8 +249,8 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
             <article class="mobile-agenda-item">
               <div class="hour">{{ formatTimeFortaleza(assignment.start_at) }}</div>
               <div class="content">
-                <strong>{{ assignment.activity_type?.name || 'Atividade' }}</strong>
-                <div class="meta">{{ assignment.location?.name || 'Sem local' }}</div>
+                <strong>{{ assignment.activity_type?.name || ('common.defaultActivity' | t) }}</strong>
+                <div class="meta">{{ assignment.location?.name || ('common.noLocation' | t) }}</div>
                 <div class="meta">{{ assignment.status }}</div>
               </div>
               <div class="quick-actions">
@@ -249,7 +258,7 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
               </div>
             </article>
           } @empty {
-            <article class="mobile-empty">Sem alocacoes para este dia.</article>
+            <article class="mobile-empty">{{ 'calendar.mobileEmptyDay' | t }}</article>
           }
         </div>
       </section>
@@ -267,14 +276,14 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
             [class.active]="desktopMainTab() === 'assignments'"
             (click)="setDesktopMainTab('assignments')"
           >
-            Alocacoes
+            {{ 'calendar.desktopViewAssignments' | t }}
           </button>
           <button
             type="button"
             [class.active]="desktopMainTab() === 'attendance'"
             (click)="setDesktopMainTab('attendance')"
           >
-            Historico de ponto
+            {{ 'calendar.desktopViewAttendance' | t }}
           </button>
         </div>
       </section>
@@ -288,21 +297,21 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
             [class.active]="desktopListTab() === 'past'"
             (click)="setDesktopListTab('past')"
           >
-            Antigas ({{ desktopTabCount('past') }})
+            {{ 'calendar.tabPast' | t }} ({{ desktopTabCount('past') }})
           </button>
           <button
             type="button"
             [class.active]="desktopListTab() === 'today'"
             (click)="setDesktopListTab('today')"
           >
-            Hoje ({{ desktopTabCount('today') }})
+            {{ 'calendar.tabToday' | t }} ({{ desktopTabCount('today') }})
           </button>
           <button
             type="button"
             [class.active]="desktopListTab() === 'future'"
             (click)="setDesktopListTab('future')"
           >
-            Futuras ({{ desktopTabCount('future') }})
+            {{ 'calendar.tabFuture' | t }} ({{ desktopTabCount('future') }})
           </button>
         </div>
         <div class="list-wrap">
@@ -310,30 +319,29 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
             <article class="item">
               <div>
                 <strong>{{ assignment.start_at | tzDate }} - {{ assignment.end_at | tzDate }}</strong>
-                <div class="meta">{{ assignment.activity_type?.name || 'Atividade' }} • {{ assignment.location?.name || 'Sem local' }}</div>
-                <div class="meta">Ponto: {{ attendanceSummary(assignment) }}</div>
+                <div class="meta">{{ assignment.activity_type?.name || ('common.defaultActivity' | t) }} • {{ assignment.location?.name || ('common.noLocation' | t) }}</div>
+                <div class="meta">{{ 'calendar.attendancePrefix' | t }}: {{ attendanceSummary(assignment) }}</div>
+                <div class="meta">{{ 'calendar.workPhotosCount' | t }}: {{ assignment.work_photos?.length || 0 }}</div>
               </div>
               <div class="actions">
                 <span class="badge" [class]="badgeClass(assignment.status)">{{ assignment.status }}</span>
-                <span class="badge badge-done" *ngIf="assignment.attendance?.done">DONE</span>
-                <div class="photos" *ngIf="assignment.attendance?.before_photo_url || assignment.attendance?.after_photo_url">
-                  <a *ngIf="assignment.attendance?.before_photo_url" [href]="assignment.attendance?.before_photo_url" target="_blank" class="photo-link">
-                    <img [src]="assignment.attendance?.before_photo_url" alt="Foto antes" />
-                    <small>Antes</small>
-                  </a>
-                  <a *ngIf="assignment.attendance?.after_photo_url" [href]="assignment.attendance?.after_photo_url" target="_blank" class="photo-link">
-                    <img [src]="assignment.attendance?.after_photo_url" alt="Foto depois" />
-                    <small>Depois</small>
-                  </a>
+                <span class="badge badge-done" *ngIf="assignment.attendance?.done">{{ 'calendar.defaultDone' | t }}</span>
+                <div class="photos" *ngIf="assignment.work_photos?.length">
+                  @for (photo of assignment.work_photos?.slice(0, 6); track photo.id) {
+                    <a [href]="photo.photo_url" target="_blank" class="photo-link">
+                      <img [src]="photo.photo_url" [alt]="photo.phase === 'BEFORE' ? ('calendar.photoBefore' | t) : ('calendar.photoAfter' | t)" />
+                      <small>{{ photo.phase === 'BEFORE' ? ('calendar.photoBefore' | t) : ('calendar.photoAfter' | t) }}</small>
+                    </a>
+                  }
                 </div>
                 @if (desktopListTab() !== 'past') {
                   <button mat-button (click)="remanejar(assignment)">{{ 'calendar.reassign' | t }}</button>
                 }
-                <button mat-button color="warn" (click)="askDelete(assignment)">Excluir</button>
+                <button mat-button color="warn" (click)="askDelete(assignment)">{{ 'calendar.delete' | t }}</button>
               </div>
             </article>
           } @empty {
-            <article class="empty-desktop-tab">Nenhuma alocacao nesta aba.</article>
+            <article class="empty-desktop-tab">{{ 'calendar.emptyTab' | t }}</article>
           }
         </div>
       </section>
@@ -341,7 +349,34 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
 
       @if (desktopMainTab() === 'attendance') {
       <section class="list-section surface-card">
-        <h3>Historico de ponto (janela carregada)</h3>
+        <h3>{{ 'calendar.requests.title' | t }}</h3>
+        <div class="attendance-history">
+          @for (request of pendingRequests(); track request.id) {
+            <article class="attendance-item">
+              <div>
+                <strong>{{ request.employeeName }}</strong>
+                <div class="meta">{{ 'calendar.requests.type' | t }}: {{ request.request_type === 'IN' ? ('requests.typeIn' | t) : ('requests.typeOut' | t) }}</div>
+                <div class="meta">{{ 'calendar.requests.requestedFor' | t }}: {{ request.requested_time | tzDate }}</div>
+                <div class="meta">{{ 'calendar.requests.reason' | t }}: {{ request.reason || ('calendar.requests.noReason' | t) }}</div>
+                @if (request.assignment) {
+                  <div class="meta">
+                    {{ 'calendar.requests.assignment' | t }}: {{ request.assignment.start_at | tzDate }} - {{ request.assignment.end_at | tzDate }}
+                  </div>
+                }
+              </div>
+              <div class="attendance-times">
+                <button mat-stroked-button color="primary" type="button" (click)="reviewAttendanceRequest(request, true)">{{ 'calendar.requests.approve' | t }}</button>
+                <button mat-stroked-button color="warn" type="button" (click)="reviewAttendanceRequest(request, false)">{{ 'calendar.requests.reject' | t }}</button>
+              </div>
+            </article>
+          } @empty {
+            <article class="empty-desktop-tab">{{ 'calendar.requests.empty' | t }}</article>
+          }
+        </div>
+      </section>
+
+      <section class="list-section surface-card">
+        <h3>{{ 'calendar.attendanceHistory.title' | t }}</h3>
         @for (group of attendanceHistoryGroups(); track group.employeeName) {
           <article class="attendance-group">
             <h4>{{ group.employeeName }}</h4>
@@ -350,18 +385,19 @@ class ShortPtBrDateAdapter extends NativeDateAdapter {
                 <article class="attendance-item">
                   <div>
                     <strong>{{ row.startAt | tzDate }} - {{ row.endAt | tzDate }}</strong>
-                    <div class="meta">Status: {{ row.attendanceLabel }}</div>
+                    <div class="meta">{{ 'calendar.attendanceHistory.status' | t }}: {{ row.attendanceLabel }}</div>
+                    <div class="meta">{{ 'calendar.attendanceHistory.photos' | t }}: {{ row.photosCount }}</div>
                   </div>
                   <div class="attendance-times">
-                    <span>Entrada: {{ row.checkInLabel }}</span>
-                    <span>Saida: {{ row.checkOutLabel }}</span>
+                    <span>{{ 'calendar.attendanceHistory.entry' | t }}: {{ row.checkInLabel }}</span>
+                    <span>{{ 'calendar.attendanceHistory.exit' | t }}: {{ row.checkOutLabel }}</span>
                   </div>
                 </article>
               }
             </div>
           </article>
         } @empty {
-          <article class="empty-desktop-tab">Nenhum ponto registrado na janela atual.</article>
+          <article class="empty-desktop-tab">{{ 'calendar.attendanceHistory.empty' | t }}</article>
         }
       </section>
       }
@@ -736,6 +772,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
   protected readonly locations = signal<Location[]>([]);
   protected readonly activityTypes = signal<ActivityType[]>([]);
   protected readonly assignments = signal<Assignment[]>([]);
+  protected readonly pendingRequests = signal<PendingRequestView[]>([]);
   protected readonly desktopMainTab = signal<'assignments' | 'attendance'>('assignments');
   protected readonly desktopListTab = signal<'past' | 'today' | 'future'>('today');
   protected readonly isMobile = signal<boolean>(window.matchMedia('(max-width: 720px)').matches);
@@ -765,11 +802,26 @@ export class AdminCalendarPageComponent implements OnDestroy {
     plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
     locale: ptBrLocale,
     firstDay: 1,
-    initialView: window.matchMedia('(max-width: 720px)').matches ? 'dayGridMonth' : 'timeGridWeek',
+    initialView: window.matchMedia('(max-width: 720px)').matches ? 'dayGridMonth' : CENTERED_WEEK_VIEW,
+    views: {
+      [CENTERED_WEEK_VIEW]: {
+        type: 'timeGrid',
+        buttonText: 'Semana',
+        dateIncrement: { days: 7 },
+        visibleRange: (currentDate: Date) => {
+          const start = new Date(currentDate);
+          start.setDate(start.getDate() - 3);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(start);
+          end.setDate(end.getDate() + 7);
+          return { start, end };
+        }
+      }
+    },
     headerToolbar: {
       left: 'prev,next today',
       center: 'title',
-      right: 'dayGridMonth,timeGridWeek,timeGridDay'
+      right: `dayGridMonth,${CENTERED_WEEK_VIEW},timeGridDay`
     },
     buttonText: {
       today: 'Hoje',
@@ -804,6 +856,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
     private readonly assignmentsService: AssignmentsService,
     private readonly employeesService: EmployeesService,
     private readonly catalogsService: CatalogsService,
+    private readonly attendanceRequestsService: AttendanceRequestsService,
     private readonly toastService: ToastService,
     private readonly dialog: MatDialog,
     private readonly overlay: Overlay,
@@ -827,7 +880,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
   private resolveCalendarLocale(lang: 'pt-BR' | 'en' | 'es') {
     if (lang === 'en') {
-      return enGbLocale;
+      return 'en';
     }
     if (lang === 'es') {
       return esLocale;
@@ -897,7 +950,8 @@ export class AdminCalendarPageComponent implements OnDestroy {
       .filter((assignment) => assignment.attendance)
       .map((assignment) => {
         const employeeName =
-          this.employees().find((item) => item.profile.id === assignment.employee_profile_id)?.profile.full_name ?? 'Colaborador';
+          this.employees().find((item) => item.profile.id === assignment.employee_profile_id)?.profile.full_name ??
+          this.i18n.t('common.collaborator');
         const attendance = assignment.attendance;
         const attendanceLabel = this.attendanceSummary(assignment);
         const checkInLabel = attendance?.check_in_at ? this.formatDateTimeFortaleza(attendance.check_in_at) : '-';
@@ -911,6 +965,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
           attendanceLabel,
           checkInLabel,
           checkOutLabel,
+          photosCount: assignment.work_photos?.length ?? 0,
           sortAt: attendance?.check_in_at ? new Date(attendance.check_in_at).getTime() : new Date(assignment.start_at).getTime()
         };
       })
@@ -941,8 +996,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
   mobileFocusDateLabel(): string {
     const key = this.mobileFocusDate();
     const [year, month, day] = key.split('-').map((part) => Number.parseInt(part, 10));
-    const locale = this.i18n.language() === 'en' ? 'en-US' : this.i18n.language() === 'es' ? 'es-ES' : 'pt-BR';
-    return new Intl.DateTimeFormat(locale, {
+    return new Intl.DateTimeFormat('en-US', {
       weekday: 'long',
       day: '2-digit',
       month: 'long',
@@ -1002,9 +1056,10 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
       this.assignments.set(assignments);
       this.calendarOptions.events = assignments.map((assignment) => this.toEventInput(assignment));
+      await this.loadPendingAttendanceRequests();
     } catch (error) {
       const err = error as Error;
-      this.toastService.error(err.message || 'Erro ao carregar agenda.');
+      this.toastService.error(err.message || this.i18n.t('calendar.errorLoadAgenda'));
       if (!navigator.onLine) {
         const cached = await this.assignmentsService.readCachedAssignments();
         this.assignments.set(cached);
@@ -1018,10 +1073,25 @@ export class AdminCalendarPageComponent implements OnDestroy {
     void this.refresh();
   }
 
+  async reviewAttendanceRequest(request: PendingRequestView, approve: boolean): Promise<void> {
+    if (!navigator.onLine) {
+      this.toastService.info(this.i18n.t('calendar.offlineReviewBlocked'));
+      return;
+    }
+
+    try {
+      await this.attendanceRequestsService.reviewRequest(request.id, approve);
+      this.toastService.success(approve ? this.i18n.t('calendar.requests.approvedToast') : this.i18n.t('calendar.requests.rejectedToast'));
+      await this.refresh();
+    } catch (error) {
+      this.toastService.error((error as Error).message || this.i18n.t('calendar.errorProcessRequest'));
+    }
+  }
+
   exportExcel(): void {
     const rows = this.buildPaylistRows();
     if (!rows.length) {
-      this.toastService.info('Nao ha alocacoes para exportar.');
+      this.toastService.info(this.i18n.t('calendar.nothingToExport'));
       return;
     }
 
@@ -1032,6 +1102,8 @@ export class AdminCalendarPageComponent implements OnDestroy {
       'STATE',
       'DATE START',
       'DATE END',
+      'CHECK-IN',
+      'CHECK-OUT',
       'CREW - IDENTIFICATION',
       'CREW - SERVICE',
       'CREW - ACTIVITY DESCRIPTION',
@@ -1056,6 +1128,8 @@ export class AdminCalendarPageComponent implements OnDestroy {
           row.state,
           row.dateStart,
           row.dateEnd,
+          row.checkIn,
+          row.checkOut,
           row.identification,
           row.service,
           row.activityDescription,
@@ -1079,7 +1153,9 @@ export class AdminCalendarPageComponent implements OnDestroy {
   }
 
   private toEventInput(assignment: Assignment): EventInput {
-    const employeeName = this.employees().find((item) => item.profile.id === assignment.employee_profile_id)?.profile.full_name ?? 'Colaborador';
+    const employeeName =
+      this.employees().find((item) => item.profile.id === assignment.employee_profile_id)?.profile.full_name ??
+      this.i18n.t('common.collaborator');
     const isPast = this.assignmentDayBucket(assignment) === 'past';
 
     const palette = isPast
@@ -1094,7 +1170,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
     return {
       id: assignment.id,
-      title: `${employeeName} • ${assignment.activity_type?.name ?? 'Atividade'}`,
+      title: `${employeeName} • ${assignment.activity_type?.name ?? this.i18n.t('common.defaultActivity')}`,
       start: assignment.start_at,
       end: assignment.end_at,
       backgroundColor: palette.bg,
@@ -1117,7 +1193,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
     }
 
     if (!navigator.onLine) {
-      this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
+      this.toastService.info(this.i18n.t('calendar.offlineBlocked'));
       return;
     }
 
@@ -1222,7 +1298,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
   private async saveAssignment(input: AssignmentDialogSaveResult): Promise<void> {
     if (!navigator.onLine) {
-      this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
+      this.toastService.info(this.i18n.t('calendar.offlineBlocked'));
       return;
     }
 
@@ -1292,7 +1368,11 @@ export class AdminCalendarPageComponent implements OnDestroy {
     });
 
     const createdRepeats = !input.id && input.repeat_count > 0 ? await this.createRepeatedAssignments(input, recurrenceGroupId) : 0;
-    this.toastService.success(createdRepeats > 0 ? `Alocacao salva com ${createdRepeats} repeticoes.` : 'Alocacao salva.');
+    this.toastService.success(
+      createdRepeats > 0
+        ? this.i18n.t('calendar.savedWithRepeats').replace('{count}', String(createdRepeats))
+        : this.i18n.t('calendar.saved')
+    );
   }
 
   private async updateSeries(input: AssignmentDialogSaveResult): Promise<void> {
@@ -1317,7 +1397,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
       status: input.status
     });
 
-    this.toastService.success('Serie atualizada.');
+    this.toastService.success(this.i18n.t('calendar.seriesUpdated'));
     await this.refresh();
   }
 
@@ -1370,7 +1450,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
   private async onEventDrop(drop: EventDropArg): Promise<void> {
     if (!navigator.onLine) {
       drop.revert();
-      this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
+      this.toastService.info(this.i18n.t('calendar.offlineBlocked'));
       return;
     }
 
@@ -1381,7 +1461,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
     try {
       await this.assignmentsService.updateDates(drop.event.id, drop.event.start.toISOString(), drop.event.end.toISOString());
-      this.toastService.success('Datas atualizadas.');
+      this.toastService.success(this.i18n.t('calendar.datesUpdated'));
       await this.refresh();
     } catch (error) {
       drop.revert();
@@ -1420,11 +1500,11 @@ export class AdminCalendarPageComponent implements OnDestroy {
         maxWidth: '420px',
         panelClass: 'confirm-dialog-panel',
         data: {
-          title: 'Excluir repeticao',
-          message: 'Escolha como deseja excluir esta alocacao repetida.',
-          confirmText: 'Excluir serie',
+          title: this.i18n.t('calendar.deleteRepeatTitle'),
+          message: this.i18n.t('calendar.deleteRepeatMessage'),
+          confirmText: this.i18n.t('calendar.deleteSeries'),
           confirmValue: 'series',
-          secondaryActionText: 'Excluir esta',
+          secondaryActionText: this.i18n.t('calendar.deleteThis'),
           secondaryActionValue: 'single',
           secondaryActionColor: 'warn'
         }
@@ -1451,7 +1531,11 @@ export class AdminCalendarPageComponent implements OnDestroy {
       width: 'calc(100vw - 24px)',
       maxWidth: '420px',
       panelClass: 'confirm-dialog-panel',
-      data: { title: 'Excluir alocacao', message: 'Deseja remover esta alocacao?', confirmText: 'Excluir' }
+      data: {
+        title: this.i18n.t('calendar.deleteAssignmentTitle'),
+        message: this.i18n.t('calendar.deleteAssignmentMessage'),
+        confirmText: this.i18n.t('calendar.delete')
+      }
     });
 
     ref.afterClosed().subscribe((confirmed: boolean) => {
@@ -1464,13 +1548,13 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
   private async delete(id: string): Promise<void> {
     if (!navigator.onLine) {
-      this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
+      this.toastService.info(this.i18n.t('calendar.offlineBlocked'));
       return;
     }
 
     try {
       await this.assignmentsService.delete(id);
-      this.toastService.success('Alocacao removida.');
+      this.toastService.success(this.i18n.t('calendar.deleted'));
       await this.refresh();
     } catch (error) {
       this.toastService.error((error as Error).message);
@@ -1479,13 +1563,13 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
   private async deleteSeries(recurrenceGroupId: string): Promise<void> {
     if (!navigator.onLine) {
-      this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
+      this.toastService.info(this.i18n.t('calendar.offlineBlocked'));
       return;
     }
 
     try {
       await this.assignmentsService.deleteByRecurrenceGroup(recurrenceGroupId);
-      this.toastService.success('Serie de repeticao removida.');
+      this.toastService.success(this.i18n.t('calendar.recurrenceDeleted'));
       await this.refresh();
     } catch (error) {
       this.toastService.error((error as Error).message);
@@ -1494,13 +1578,13 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
   private async reassign(assignmentId: string, payload: ReassignDialogResult): Promise<void> {
     if (!navigator.onLine) {
-      this.toastService.info('Sem internet: criacao/edicao bloqueadas no modo offline.');
+      this.toastService.info(this.i18n.t('calendar.offlineBlocked'));
       return;
     }
 
     try {
       await this.assignmentsService.reassign(assignmentId, payload.toEmployeeProfileId, payload.reason);
-      this.toastService.success('Remanejamento concluido.');
+      this.toastService.success(this.i18n.t('calendar.reassignDone'));
       await this.refresh();
     } catch (error) {
       this.handleAssignmentError(error);
@@ -1521,10 +1605,10 @@ export class AdminCalendarPageComponent implements OnDestroy {
   private handleAssignmentError(error: unknown): void {
     const message = (error as Error).message ?? '';
     if (message.includes('assignments_no_overlap')) {
-      this.toastService.error('Conflito de horario: colaborador ja possui alocacao nesse intervalo.');
+      this.toastService.error(this.i18n.t('calendar.conflictError'));
       return;
     }
-    this.toastService.error(message || 'Erro ao salvar alocacao.');
+    this.toastService.error(message || this.i18n.t('calendar.saveError'));
   }
 
   private buildPaylistRows(): PaylistRow[] {
@@ -1532,7 +1616,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
       this.employees().map((item) => [
         item.profile.id,
         {
-          name: item.profile.full_name ?? 'Sem nome',
+          name: item.profile.full_name ?? this.i18n.t('common.noName'),
           identification: item.employee?.employee_code ?? item.profile.id
         }
       ])
@@ -1549,7 +1633,9 @@ export class AdminCalendarPageComponent implements OnDestroy {
         state: assignment.assignment_state ?? assignment.location?.state ?? '-',
         dateStart: this.formatDateTimeFortaleza(assignment.start_at),
         dateEnd: this.formatDateTimeFortaleza(assignment.end_at),
-        identification: employee?.name ?? 'Sem nome',
+        checkIn: assignment.attendance?.check_in_at ? this.formatDateTimeFortaleza(assignment.attendance.check_in_at) : '-',
+        checkOut: assignment.attendance?.check_out_at ? this.formatDateTimeFortaleza(assignment.attendance.check_out_at) : '-',
+        identification: employee?.name ?? this.i18n.t('common.noName'),
         service: activityName,
         activityDescription: description,
         status: assignment.status,
@@ -1563,6 +1649,11 @@ export class AdminCalendarPageComponent implements OnDestroy {
         totalAmount: this.formatMoneyOrDash(assignment.total_amount)
       };
     });
+  }
+
+  locationOptionLabel(location: Location): string {
+    const parts = [location.name, location.address?.trim() || '', location.state?.trim() || ''].filter(Boolean);
+    return parts.join(' - ');
   }
 
   private toRangeStartIso(date: Date): string {
@@ -1600,12 +1691,13 @@ export class AdminCalendarPageComponent implements OnDestroy {
   }
 
   private formatDateTimeFortaleza(value: string): string {
-    return new Intl.DateTimeFormat('pt-BR', {
-      day: '2-digit',
+    return new Intl.DateTimeFormat('en-US', {
       month: '2-digit',
+      day: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
       timeZone: 'America/Fortaleza'
     }).format(new Date(value));
   }
@@ -1631,9 +1723,10 @@ export class AdminCalendarPageComponent implements OnDestroy {
   }
 
   formatTimeFortaleza(value: string): string {
-    return new Intl.DateTimeFormat('pt-BR', {
+    return new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
       timeZone: 'America/Fortaleza'
     }).format(new Date(value));
   }
@@ -1678,11 +1771,28 @@ export class AdminCalendarPageComponent implements OnDestroy {
   }
 
   private applyResponsiveCalendarOptions(): void {
+    const weekText = this.i18n.language() === 'en' ? 'Week' : this.i18n.language() === 'es' ? 'Semana' : 'Semana';
+    this.calendarOptions.views = {
+      [CENTERED_WEEK_VIEW]: {
+        type: 'timeGrid',
+        buttonText: weekText,
+        dateIncrement: { days: 7 },
+        visibleRange: (currentDate: Date) => {
+          const start = new Date(currentDate);
+          start.setDate(start.getDate() - 3);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(start);
+          end.setDate(end.getDate() + 7);
+          return { start, end };
+        }
+      }
+    };
+
     if (this.isMobile()) {
       this.calendarOptions.headerToolbar = {
         left: 'prev,next',
         center: 'title',
-        right: 'dayGridMonth,timeGridDay'
+        right: `dayGridMonth,${CENTERED_WEEK_VIEW},timeGridDay`
       };
       this.calendarOptions.dayMaxEventRows = 2;
       this.calendarOptions.eventMinHeight = 22;
@@ -1690,7 +1800,7 @@ export class AdminCalendarPageComponent implements OnDestroy {
       this.calendarOptions.headerToolbar = {
         left: 'prev,next today',
         center: 'title',
-        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        right: `dayGridMonth,${CENTERED_WEEK_VIEW},timeGridDay`
       };
       this.calendarOptions.dayMaxEventRows = false;
       this.calendarOptions.eventMinHeight = 18;
@@ -1698,11 +1808,11 @@ export class AdminCalendarPageComponent implements OnDestroy {
 
     const api = this.adminCalendar?.getApi();
     if (api) {
-      if (this.isMobile() && api.view.type === 'timeGridWeek') {
+      if (this.isMobile() && api.view.type === CENTERED_WEEK_VIEW) {
         api.changeView('dayGridMonth');
       }
       if (!this.isMobile() && api.view.type === 'dayGridMonth') {
-        api.changeView('timeGridWeek');
+        api.changeView(CENTERED_WEEK_VIEW);
       }
     }
   }
@@ -1741,5 +1851,16 @@ export class AdminCalendarPageComponent implements OnDestroy {
       return '-';
     }
     return value.toFixed(2);
+  }
+
+  private async loadPendingAttendanceRequests(): Promise<void> {
+    const requests = await this.attendanceRequestsService.listPending();
+    const byProfileId = new Map(this.employees().map((item) => [item.profile.id, item.profile.full_name ?? this.i18n.t('common.collaborator')]));
+    this.pendingRequests.set(
+      requests.map((request) => ({
+        ...request,
+        employeeName: byProfileId.get(request.employee_profile_id) ?? this.i18n.t('common.collaborator')
+      }))
+    );
   }
 }

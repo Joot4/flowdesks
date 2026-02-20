@@ -111,7 +111,7 @@ import { TranslatePipe } from '../../../shared/pipes/t.pipe';
         display: grid;
         grid-template-columns: repeat(4, minmax(120px, 1fr));
         gap: 12px;
-        align-items: center;
+        align-items: start;
         margin-bottom: 12px;
       }
 
@@ -140,8 +140,11 @@ import { TranslatePipe } from '../../../shared/pipes/t.pipe';
         background: #f8fafc;
         color: #475569;
         border-radius: 10px;
-        padding: 10px 12px;
+        padding: 0 12px;
         font-size: 12px;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
       }
 
       .maps-badge.ok {
@@ -175,8 +178,8 @@ export class LocationsPageComponent {
   protected readonly form = this.formBuilder.nonNullable.group({
     id: [''],
     name: ['', Validators.required],
-    address: [''],
-    state: [''],
+    address: ['', Validators.required],
+    state: ['', Validators.required],
     latitude: [null as number | null],
     longitude: [null as number | null],
     geofence_radius_m: [200 as number | null],

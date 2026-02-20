@@ -14,7 +14,8 @@ export const routes: Routes = [
       { path: 'employees', loadComponent: () => import('./features/admin/employees/employees.page').then((m) => m.EmployeesPageComponent) },
       { path: 'locations', loadComponent: () => import('./features/admin/catalogs/locations.page').then((m) => m.LocationsPageComponent) },
       { path: 'activity-types', loadComponent: () => import('./features/admin/catalogs/activity-types.page').then((m) => m.ActivityTypesPageComponent) },
-      { path: 'calendar', loadComponent: () => import('./features/admin/calendar/calendar.page').then((m) => m.AdminCalendarPageComponent) }
+      { path: 'calendar', loadComponent: () => import('./features/admin/calendar/calendar.page').then((m) => m.AdminCalendarPageComponent) },
+      { path: 'work-photos', loadComponent: () => import('./features/admin/work-photos/work-photos.page').then((m) => m.WorkPhotosPageComponent) }
     ]
   },
   {
@@ -32,6 +33,7 @@ export const routes: Routes = [
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'ponto' },
       { path: 'ponto', loadComponent: () => import('./features/collaborator/my-calendar.page').then((m) => m.MyCalendarPageComponent) },
+      { path: 'solicitacoes', loadComponent: () => import('./features/collaborator/requests.page').then((m) => m.RequestsPageComponent) },
       { path: 'perfil', loadComponent: () => import('./features/collaborator/profile.page').then((m) => m.ProfilePageComponent) }
     ]
   },

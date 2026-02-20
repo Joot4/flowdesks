@@ -4,6 +4,7 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
+import { MatSelectModule } from '@angular/material/select';
 import { CollaboratorView } from '../../../core/supabase/employees.service';
 
 export interface EmployeeDialogData {
@@ -23,11 +24,18 @@ export interface EmployeeDialogResult {
 @Component({
   selector: 'app-employee-form-dialog',
   standalone: true,
-  imports: [ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule],
+  imports: [ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule, MatSelectModule],
   template: `
     <h2 mat-dialog-title>{{ data.mode === 'create' ? 'Adicionar colaborador' : 'Editar colaborador' }}</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="form">
+        @if (data.mode === 'edit') {
+          <mat-form-field appearance="fill">
+            <mat-label>Email cadastrado</mat-label>
+            <input matInput formControlName="email" readonly />
+          </mat-form-field>
+        }
+
         @if (data.mode === 'create') {
           <mat-form-field appearance="fill">
             <mat-label>Email</mat-label>
@@ -57,7 +65,11 @@ export interface EmployeeDialogResult {
 
         <mat-form-field appearance="fill">
           <mat-label>Cargo</mat-label>
-          <input matInput formControlName="job_title" />
+          <mat-select formControlName="job_title">
+            @for (role of jobTitleOptions; track role) {
+              <mat-option [value]="role">{{ role }}</mat-option>
+            }
+          </mat-select>
         </mat-form-field>
       </form>
     </mat-dialog-content>
@@ -79,8 +91,10 @@ export interface EmployeeDialogResult {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class EmployeeFormDialogComponent {
+  readonly jobTitleOptions = ['REGULAR SERVICES', 'EXTRA SERVICES', 'EXTRA SERVICES - PROJECT GUYS'] as const;
+
   readonly form = this.formBuilder.nonNullable.group({
-    email: [this.data.mode === 'create' ? '' : this.data.collaborator?.profile.id ?? '', this.data.mode === 'create' ? [Validators.required, Validators.email] : []],
+    email: [this.data.mode === 'create' ? '' : this.data.collaborator?.profile.email ?? '', this.data.mode === 'create' ? [Validators.required, Validators.email] : []],
     password: ['', this.data.mode === 'create' ? [Validators.required, Validators.minLength(6)] : []],
     full_name: [this.data.collaborator?.profile.full_name ?? '', [Validators.required, Validators.minLength(3)]],
     employee_code: [this.data.collaborator?.employee?.employee_code ?? ''],

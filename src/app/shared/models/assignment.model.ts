@@ -3,6 +3,7 @@ export type AssignmentStatus = 'PLANNED' | 'CONFIRMED' | 'CANCELLED';
 export interface Profile {
   id: string;
   full_name: string | null;
+  email?: string | null;
   role: 'SUPER_ADMIN' | 'ADMIN' | 'COLLABORATOR';
   active: boolean;
   created_at: string;
@@ -63,9 +64,10 @@ export interface Assignment {
   updated_at: string;
   created_at: string;
   employee?: Pick<Profile, 'id' | 'full_name'>;
-  location?: Pick<Location, 'id' | 'name' | 'address' | 'state'>;
+  location?: Pick<Location, 'id' | 'name' | 'address' | 'state' | 'maps_url'>;
   activity_type?: Pick<ActivityType, 'id' | 'name'>;
   attendance?: AssignmentAttendance | null;
+  work_photos?: AssignmentWorkPhoto[];
 }
 
 export interface ReassignmentLog {
@@ -90,4 +92,36 @@ export interface AssignmentAttendance {
   done: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface AssignmentWorkPhoto {
+  id: string;
+  assignment_id: string;
+  employee_profile_id: string;
+  phase: 'BEFORE' | 'AFTER';
+  photo_url: string;
+  note?: string | null;
+  captured_at?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracy_m?: number | null;
+  heading_deg?: number | null;
+  location_name?: string | null;
+  location_address?: string | null;
+  location_maps_url?: string | null;
+  created_at: string;
+}
+
+export interface AttendanceAdjustmentRequest {
+  id: string;
+  assignment_id: string;
+  employee_profile_id: string;
+  request_type: 'IN' | 'OUT';
+  requested_time: string;
+  reason: string | null;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  created_at: string;
 }

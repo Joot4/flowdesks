@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { set, get } from 'idb-keyval';
-import { Assignment, AssignmentAttendance, AssignmentStatus } from '../../shared/models/assignment.model';
+import { Assignment, AssignmentAttendance, AssignmentStatus, AssignmentWorkPhoto } from '../../shared/models/assignment.model';
 import { supabase } from './supabase.client';
 
 export interface AssignmentFilters {
@@ -30,6 +30,17 @@ export interface AssignmentInput {
   status: AssignmentStatus;
 }
 
+export interface WorkPhotoMetadataInput {
+  capturedAtIso?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyM?: number | null;
+  headingDeg?: number | null;
+  locationName?: string | null;
+  locationAddress?: string | null;
+  locationMapsUrl?: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AssignmentsService {
   private readonly cacheKey = 'calendar:last-assignments';
@@ -37,7 +48,7 @@ export class AssignmentsService {
   async listByRange(startAt: string, endAt: string, filters?: AssignmentFilters): Promise<Assignment[]> {
     let query = supabase
       .from('assignments')
-      .select('*, location:locations(id,name,address,state), activity_type:activity_types(id,name)')
+      .select('*, location:locations(id,name,address,state,maps_url), activity_type:activity_types(id,name)')
       // Range overlap: assignment starts before range end and ends after range start
       .lt('start_at', endAt)
       .gt('end_at', startAt)
@@ -64,6 +75,7 @@ export class AssignmentsService {
     const assignmentIds = data.map((assignment) => assignment.id);
 
     let attendanceByAssignmentId = new Map<string, AssignmentAttendance>();
+    let photosByAssignmentId = new Map<string, AssignmentWorkPhoto[]>();
     if (assignmentIds.length > 0) {
       const { data: attendances, error: attendanceError } = await supabase
         .from('assignment_attendances')
@@ -76,11 +88,29 @@ export class AssignmentsService {
       }
 
       attendanceByAssignmentId = new Map(attendances.map((attendance) => [attendance.assignment_id, attendance]));
+
+      const { data: photos, error: photosError } = await supabase
+        .from('assignment_work_photos')
+        .select('*')
+        .in('assignment_id', assignmentIds)
+        .order('created_at', { ascending: false })
+        .returns<AssignmentWorkPhoto[]>();
+
+      if (photosError) {
+        throw photosError;
+      }
+
+      for (const photo of photos) {
+        const current = photosByAssignmentId.get(photo.assignment_id) ?? [];
+        current.push(photo);
+        photosByAssignmentId.set(photo.assignment_id, current);
+      }
     }
 
     const normalized = data.map((assignment) => ({
       ...assignment,
-      attendance: attendanceByAssignmentId.get(assignment.id) ?? null
+      attendance: attendanceByAssignmentId.get(assignment.id) ?? null,
+      work_photos: photosByAssignmentId.get(assignment.id) ?? []
     }));
 
     await set(this.cacheKey, normalized);
@@ -179,6 +209,11 @@ export class AssignmentsService {
   }
 
   async uploadAttendancePhoto(assignmentId: string, action: 'IN' | 'OUT', file: File): Promise<string> {
+    const phase = action === 'IN' ? 'BEFORE' : 'AFTER';
+    return this.uploadWorkPhoto(assignmentId, phase, file);
+  }
+
+  async uploadWorkPhoto(assignmentId: string, phase: 'BEFORE' | 'AFTER', file: File): Promise<string> {
     const { data: authData, error: userError } = await supabase.auth.getUser();
     if (userError || !authData.user) {
       throw userError ?? new Error('Usuario nao autenticado.');
@@ -186,8 +221,8 @@ export class AssignmentsService {
 
     const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
     const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg';
-    const stage = action === 'IN' ? 'before' : 'after';
-    const path = `${authData.user.id}/${assignmentId}/${stage}-${Date.now()}.${safeExt}`;
+    const stage = phase === 'BEFORE' ? 'before' : 'after';
+    const path = `${authData.user.id}/${assignmentId}/${stage}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
 
     const { error } = await supabase.storage.from('assignment-evidences').upload(path, file, {
       upsert: true,
@@ -200,6 +235,55 @@ export class AssignmentsService {
 
     const publicUrl = supabase.storage.from('assignment-evidences').getPublicUrl(path).data.publicUrl;
     return publicUrl;
+  }
+
+  async saveWorkPhoto(
+    assignmentId: string,
+    phase: 'BEFORE' | 'AFTER',
+    photoUrl: string,
+    metadata?: WorkPhotoMetadataInput
+  ): Promise<void> {
+    const { data: authData, error: userError } = await supabase.auth.getUser();
+    if (userError || !authData.user) {
+      throw userError ?? new Error('Usuario nao autenticado.');
+    }
+
+    const { error } = await supabase.from('assignment_work_photos').insert({
+      assignment_id: assignmentId,
+      employee_profile_id: authData.user.id,
+      phase,
+      photo_url: photoUrl,
+      captured_at: metadata?.capturedAtIso ?? null,
+      latitude: metadata?.latitude ?? null,
+      longitude: metadata?.longitude ?? null,
+      accuracy_m: metadata?.accuracyM ?? null,
+      heading_deg: metadata?.headingDeg ?? null,
+      location_name: metadata?.locationName ?? null,
+      location_address: metadata?.locationAddress ?? null,
+      location_maps_url: metadata?.locationMapsUrl ?? null
+    });
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  async deleteWorkPhoto(photoId: string, photoUrl: string): Promise<void> {
+    const { error } = await supabase.from('assignment_work_photos').delete().eq('id', photoId);
+    if (error) {
+      throw error;
+    }
+
+    const path = this.extractEvidencePathFromPublicUrl(photoUrl);
+    if (!path) {
+      return;
+    }
+
+    const { error: storageError } = await supabase.storage.from('assignment-evidences').remove([path]);
+    if (storageError) {
+      // Keep DB deletion as source of truth; storage cleanup is best effort.
+      console.warn('Failed to remove storage object for work photo', storageError);
+    }
   }
 
   async punch(
@@ -219,6 +303,20 @@ export class AssignmentsService {
 
     if (error) {
       throw error;
+    }
+  }
+
+  private extractEvidencePathFromPublicUrl(publicUrl: string): string | null {
+    const marker = '/storage/v1/object/public/assignment-evidences/';
+    const idx = publicUrl.indexOf(marker);
+    if (idx < 0) {
+      return null;
+    }
+    const rawPath = publicUrl.slice(idx + marker.length);
+    try {
+      return decodeURIComponent(rawPath);
+    } catch {
+      return rawPath;
     }
   }
 }

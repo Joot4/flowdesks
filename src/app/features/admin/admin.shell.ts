@@ -14,6 +14,7 @@ import { TranslatePipe } from '../../shared/pipes/t.pipe';
       <a mat-stroked-button routerLink="employees" routerLinkActive="active-link">{{ 'nav.employees' | t }}</a>
       <a mat-stroked-button routerLink="locations" routerLinkActive="active-link">{{ 'nav.locations' | t }}</a>
       <a mat-stroked-button routerLink="activity-types" routerLinkActive="active-link">{{ 'nav.activities' | t }}</a>
+      <a mat-stroked-button routerLink="work-photos" routerLinkActive="active-link">{{ 'nav.photos' | t }}</a>
     </nav>
     <mat-divider></mat-divider>
     <div class="content"><router-outlet /></div>
