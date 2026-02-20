@@ -65,7 +65,7 @@ export class AuthService {
     try {
       const profile = await this.profilesService.getMyProfile();
       this.sessionStore.setProfile(profile);
-      if (profile?.role === 'COLLABORATOR') {
+      if (profile?.role) {
         await this.notificationsService.startForCurrentUser();
       } else {
         await this.notificationsService.stop();
