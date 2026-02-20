@@ -1,4 +1,4 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, ViewChild, computed, effect, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, OnDestroy, ViewChild, computed, effect, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FullCalendarModule } from '@fullcalendar/angular';
 import { CalendarOptions, EventClickArg, EventContentArg, EventInput } from '@fullcalendar/core';
@@ -226,8 +226,12 @@ const CENTERED_WEEK_VIEW = 'timeGridCenteredWeek';
   ],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class MyCalendarPageComponent implements AfterViewInit {
+export class MyCalendarPageComponent implements AfterViewInit, OnDestroy {
   @ViewChild(FullCalendarComponent) private calendar?: FullCalendarComponent;
+  private readonly mobileMediaQuery = window.matchMedia('(max-width: 720px)');
+  private readonly mobileMediaListener = (): void => {
+    this.applyResponsiveCalendarOptions();
+  };
   protected readonly assignments = signal<Assignment[]>([]);
   protected readonly isPunching = signal<boolean>(false);
   protected readonly isPhotoProcessing = signal<boolean>(false);
@@ -250,7 +254,7 @@ export class MyCalendarPageComponent implements AfterViewInit {
   protected calendarOptions: CalendarOptions = {
     plugins: [dayGridPlugin, timeGridPlugin],
     locale: ptBrLocale,
-    initialView: CENTERED_WEEK_VIEW,
+    initialView: window.matchMedia('(max-width: 720px)').matches ? 'dayGridMonth' : CENTERED_WEEK_VIEW,
     views: {
       [CENTERED_WEEK_VIEW]: {
         type: 'timeGrid',
@@ -269,7 +273,7 @@ export class MyCalendarPageComponent implements AfterViewInit {
     headerToolbar: {
       left: 'prev,next today',
       center: 'title',
-      right: `dayGridMonth,${CENTERED_WEEK_VIEW},timeGridDay`
+      right: window.matchMedia('(max-width: 720px)').matches ? 'dayGridMonth,timeGridDay' : `dayGridMonth,${CENTERED_WEEK_VIEW},timeGridDay`
     },
     buttonText: {
       today: 'Hoje',
@@ -300,6 +304,8 @@ export class MyCalendarPageComponent implements AfterViewInit {
     private readonly dialog: MatDialog,
     private readonly i18n: I18nService
   ) {
+    this.mobileMediaQuery.addEventListener('change', this.mobileMediaListener);
+
     effect(() => {
       const lang = this.i18n.language();
       this.calendarOptions.locale = this.resolveCalendarLocale(lang);
@@ -321,6 +327,7 @@ export class MyCalendarPageComponent implements AfterViewInit {
         }
       };
       this.calendarOptions = { ...this.calendarOptions };
+      this.applyResponsiveCalendarOptions();
       this.syncCalendarSize();
     });
 
@@ -334,7 +341,12 @@ export class MyCalendarPageComponent implements AfterViewInit {
   }
 
   ngAfterViewInit(): void {
+    this.applyResponsiveCalendarOptions();
     this.syncCalendarSize();
+  }
+
+  ngOnDestroy(): void {
+    this.mobileMediaQuery.removeEventListener('change', this.mobileMediaListener);
   }
 
   private resolveCalendarLocale(lang: 'pt-BR' | 'en' | 'es') {
@@ -717,6 +729,34 @@ export class MyCalendarPageComponent implements AfterViewInit {
     }
 
     return raw;
+  }
+
+  private applyResponsiveCalendarOptions(): void {
+    if (this.mobileMediaQuery.matches) {
+      this.calendarOptions.headerToolbar = {
+        left: 'prev,next',
+        center: 'title',
+        right: 'dayGridMonth,timeGridDay'
+      };
+    } else {
+      this.calendarOptions.headerToolbar = {
+        left: 'prev,next today',
+        center: 'title',
+        right: `dayGridMonth,${CENTERED_WEEK_VIEW},timeGridDay`
+      };
+    }
+
+    const api = this.calendar?.getApi();
+    if (!api) {
+      return;
+    }
+
+    if (this.mobileMediaQuery.matches && api.view.type === CENTERED_WEEK_VIEW) {
+      api.changeView('dayGridMonth');
+    }
+    if (!this.mobileMediaQuery.matches && api.view.type === 'dayGridMonth') {
+      api.changeView(CENTERED_WEEK_VIEW);
+    }
   }
 
   private syncCalendarSize(): void {

@@ -1797,7 +1797,7 @@ export class AdminCalendarPageComponent implements OnDestroy, AfterViewInit {
       this.calendarOptions.headerToolbar = {
         left: 'prev,next',
         center: 'title',
-        right: `dayGridMonth,${CENTERED_WEEK_VIEW},timeGridDay`
+        right: 'dayGridMonth,timeGridDay'
       };
       this.calendarOptions.dayMaxEventRows = 2;
       this.calendarOptions.eventMinHeight = 22;
